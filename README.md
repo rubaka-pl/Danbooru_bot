@@ -3,7 +3,7 @@
 
 # Danbooru_bot
 👉[@OBITEL_DIONISA](https://t.me/OBITEL_DIONISA)
-
+👉[@Danbooru_pictures_bot](https://t.me/Danbooru_pictures_bot)
 # 🎨 Danbooru Anime Telegram Bot
 
 ## 🇵🇱 Opis 
@@ -17,6 +17,7 @@ To jest mój projekt bota Telegramowego, który automatycznie pobiera ilustracje
 - Tryb bezpieczny i +18
 
 👉 Zajrzyj też do kanału Telegram: [@OBITEL_DIONISA](https://t.me/OBITEL_DIONISA)
+👉[@Danbooru_pictures_bot](https://t.me/Danbooru_pictures_bot)
 
 ## 🇬🇧 Description 
 
@@ -29,9 +30,11 @@ This is a Telegram bot project that fetches anime-style illustrations from [Danb
 - NSFW support via smart filtering
 
 👉[@OBITEL_DIONISA](https://t.me/OBITEL_DIONISA)
+👉[@Danbooru_pictures_bot](https://t.me/Danbooru_pictures_bot)
 
 ---
 
 👉[@OBITEL_DIONISA](https://t.me/OBITEL_DIONISA)
+👉[@Danbooru_pictures_bot](https://t.me/Danbooru_pictures_bot)
 
 ![image](https://github.com/user-attachments/assets/4ed1db69-fc56-47b4-a38f-ba42e786cc43)

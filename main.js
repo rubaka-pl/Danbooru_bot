@@ -5,8 +5,8 @@ import path from 'path';
 import { session } from 'telegraf';
 
 const config = {
-    token: '7897604514:AAGxxj4kFa4vltdztAh1rPLQBB1ygKEJqrQ',
-    groupId: '@Obitel_Dionisa',
+    token: 'YOURE_TOKEN_HERE',
+    groupId: '@GROUP_NAME',
     storageFile: path.resolve('./sent_images.json'),
     api: {
         baseUrl: 'https://danbooru.donmai.us',

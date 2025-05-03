@@ -1,3 +1,6 @@
+![image](https://github.com/user-attachments/assets/8040d132-7573-4457-9d40-47780f394b3e)
+
+
 # Danbooru_bot
 👉[@OBITEL_DIONISA](https://t.me/OBITEL_DIONISA)
 
@@ -11,6 +14,7 @@ To jest mój projekt bota Telegramowego, który automatycznie pobiera ilustracje
 - ⏱️ Automatycznie publikuje obrazki co 5 sekund do grupy
 - 📎 Obsługuje wiele postaci na raz (lista przez Enter)
 - 🧠 Rozpoznaje tagi, daty, autora i anime
+- Tryb bezpieczny i +18
 
 👉 Zajrzyj też do kanału Telegram: [@OBITEL_DIONISA](https://t.me/OBITEL_DIONISA)
 
@@ -22,6 +26,7 @@ This is a Telegram bot project that fetches anime-style illustrations from [Danb
 - ⏱️ Auto-posts every 5 seconds to a group
 - 📎 Supports multiple characters at once (list via Enter)
 - 🧠 Displays tags, author, date, and anime info
+- NSFW support via smart filtering
 
 👉[@OBITEL_DIONISA](https://t.me/OBITEL_DIONISA)
 
@@ -29,3 +34,4 @@ This is a Telegram bot project that fetches anime-style illustrations from [Danb
 
 👉[@OBITEL_DIONISA](https://t.me/OBITEL_DIONISA)
 
+![image](https://github.com/user-attachments/assets/4ed1db69-fc56-47b4-a38f-ba42e786cc43)

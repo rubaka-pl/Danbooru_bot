@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import fs from 'fs/promises';
 import path from 'path';
 import { session } from 'telegraf';
+import http from 'http';
 
 const config = {
   token: process.env.BOT_TOKEN,
@@ -350,7 +351,7 @@ async function autoPost() {
 
 // Запуск автопостинга
 autoPost();
-const http = require('http');
+
 
 const server = http.createServer((req, res) => {
 	res.writeHead(200);

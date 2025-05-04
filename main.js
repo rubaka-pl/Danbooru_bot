@@ -260,14 +260,17 @@ async function handleSearch(ctx, count, specificQuery = null) {
     }
 }
 
-// ⏱️ АВТОПОСТ В КАНАЛ РАЗ В 5 СЕКУНД ТОЛЬКО GENERAL
-let autoPostDelay = 5000;
+// ⏱️ АВТОПОСТ В КАНАЛ РАЗ В 60 СЕКУНД ТОЛЬКО GENERAL
+let autoPostDelay = 600000;
+let postCounter = 0;
 
 async function autoPost() {
     console.log('📡 Запуск автопоста...');
 
     try {
-        const tagQuery = [...config.api.baseTags, 'score:>50', 'rating:general', 'order:random'].join(' ');
+        postCounter++;
+        let selectedRating = (postCounter % 5 === 0) ? 'rating:sensitive' : 'rating:general';
+        const tagQuery = [...config.api.baseTags, 'score:>50', selectedRating, 'order:random'].join(' ');
         console.log('🔍 Поиск с тегами:', tagQuery);
 
         const searchParams = new URLSearchParams({
@@ -334,7 +337,7 @@ async function autoPost() {
             sentImageHashes.add(post.md5);
             await utils.saveHistory();
 
-            autoPostDelay = 5000; // сброс обратно
+            autoPostDelay = 60000; // сброс обратно
             break;
         }
     } catch (error) {

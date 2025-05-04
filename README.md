@@ -48,3 +48,6 @@ This bot is deployed on Render.com as a persistent web service. It runs 24/7 and
 👉[@Danbooru_pictures_bot](https://t.me/Danbooru_pictures_bot)
 
 ![image](https://github.com/user-attachments/assets/4ed1db69-fc56-47b4-a38f-ba42e786cc43)
+![image](https://github.com/user-attachments/assets/4e00eef9-bbea-435c-abfd-cf67ef80ea78)
+
+

@@ -20,7 +20,22 @@ const config = {
 };
 
 const nsfwTags = [
-    'nsfw', 'hentai', 'ecchi', 'lewd', 'explicit', 'adult', '18+', 'dick', 'cock', 'penis', 'vagina', 'stomach_punch', 'pussy', 'gaping', 'cunt', 'clit', 'bootjob', 'footjob', 'balls', 'testicles', 'tits', 'boobs', 'breasts', 'nipples', 'ass', 'butt', 'booty', 'anus', 'anal', 'nude', 'naked', 'bareback', 'no_panties', 'no_bra', 'sex', 'fuck', 'intercourse', 'blowjob', 'bj', 'handjob', 'hj', 'titfuck', 'paizuri', 'cum', 'creampie', 'facial', 'bukkake', 'threesome', 'orgy', 'gangbang', 'masturbation', 'fingering', 'cunnilingus', 'fellatio', 'rimjob', 'bdsm', 'bondage', 'gag', 'collar', 'leash', 'spanking', 'whip', 'chains', 'latex', 'asslicking', 'leather', 'uniform', 'lingerie', 'stockings', 'pantyhose', 'footjob', 'feet', 'toes', 'armpit', 'urethral', 'futanari', 'trap', 'yaoi', 'yuri', 'futa', 'shemale', 'trans', 'transgender', 'crossdressing', 'femboy', 'tomboy', 'otokonoko', 'pee', 'piss', 'watersports', 'scat', 'vore', 'guro', 'rape', 'ahegao', 'deepthroat', 'doggystyle', 'missionary', 'cowgirl', 'reverse_cowgirl', 'double_penetration', 'group', 'public', 'exhibitionism', 'voyeur', 'dildo', 'chastity_cage', 'butt_plug', 'licking_dildo', 'rape', 'lolicon', 'nipples', 'guro', 'futanari', 'futa_with_female', 'cum', 'anilingus', 'fellatio', 'group_sex', 'sex', 'orgy', 'ffm_threesome', 'mmf_threesome', 'gangbang', 'cooperative_fellatio', 'oral', 'oral_sandwich', 'standing_anilingus', 'netorare', 'threesome', 'anal_object_insertion', 'cum_in_ass', 'ejaculating_while_penetrated', 'wiffle_gag', 'small_penis', 'nub_chastity_cage', 'anal_fluid', 'futanari_masturbation', 'erection', 'male_penetrated', 'huge_penis', 'ejaculation', 'penis_size_difference', 'veiny_penis',
+    '18+', 'adult', 'anal', 'anal_fluid', 'anal_object_insertion', 'anilingus', 'ahegao', 'armpit',
+    'ass', 'asslicking', 'anus', 'bareback', 'balls', 'bdsm', 'blowjob', 'bj', 'bondage', 'boobs',
+    'bootjob', 'booty', 'breasts', 'bukakke', 'butt', 'butt_plug', 'chastity_cage', 'clit', 'collar',
+    'cooperative_fellatio', 'cowgirl', 'creampie', 'crossdressing', 'cum', 'cum_in_ass', 'cunnilingus',
+    'cunt', 'deepthroat', 'dick', 'dildo', 'doggystyle', 'double_penetration', 'ecchi', 'ejaculating_while_penetrated',
+    'ejaculation', 'erection', 'exhibitionism', 'explicit', 'facial', 'feet', 'fellatio', 'femboy',
+    'fingering', 'footjob', 'fuck', 'futanari', 'futa_with_female', 'gag', 'gangbang', 'gaping',
+    'group', 'group_sex', 'guro', 'handjob', 'hentai', 'huge_penis', 'intercourse', 'latex', 'leash',
+    'leather', 'lewd', 'licking_dildo', 'lingerie', 'lolicon', 'male_penetrated', 'masturbation',
+    'missionary', 'mmf_threesome', 'netorare', 'no_bra', 'no_panties', 'nub_chastity_cage', 'orgasm', 'nude',
+    'naked', 'nipples', 'nsfw', 'orgy', 'otokonoko', 'paizuri', 'pantyhose', 'pee', 'penis',
+    'penis_size_difference', 'piss', 'public', 'pussy', 'rape', 'reverse_cowgirl', 'rimjob',
+    'scat', 'sex', 'shemale', 'small_penis', 'standing_anilingus', 'stockings',
+    'stomach_punch', 'testicles', 'threesome', 'tits', 'tomboy', 'toes', 'trans', 'transgender',
+    'trap', 'urethral', 'uniform', 'vagina', 'veiny_penis', 'vore', 'voyeur',
+    'whip', 'wiffle_gag', 'yaoi'
 ];
 
 const bot = new Telegraf(config.token);

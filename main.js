@@ -262,7 +262,7 @@ async function handleSearch(ctx, count, specificQuery = null) {
 }
 
 // ⏱️ АВТОПОСТ В КАНАЛ РАЗ В 60 СЕКУНД ТОЛЬКО GENERAL
-let autoPostDelay = 600000;
+let autoPostDelay = 60000;
 let postCounter = 0;
 
 async function autoPost() {

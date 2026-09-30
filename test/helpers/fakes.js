@@ -83,6 +83,18 @@ export function fakeClient(overrides = {}) {
         async tagsMatching() {
             return [];
         },
+        async tagsFuzzy(name) {
+            calls.push(['tagsFuzzy', name]);
+            return name === 'hatsue_miku' ? [{ name: 'hatsune_miku', post_count: 100_000, category: 4 }] : [];
+        },
+        async wiki(title) {
+            calls.push(['wiki', title]);
+            return { title, body: 'h4. Appearance\n[b]Miku[/b] is a [[vocaloid]] character.', other_names: ['初音ミク'] };
+        },
+        async relatedTags(query) {
+            calls.push(['relatedTags', query]);
+            return [{ name: 'vocaloid', category: 3, postCount: 200_000 }, { name: 'twintails', category: 0, postCount: 1 }];
+        },
         ...overrides
     };
     return client;

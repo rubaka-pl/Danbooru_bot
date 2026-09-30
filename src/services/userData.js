@@ -10,7 +10,16 @@ const MAX_SUBS = 10;
 const favKey = (chatId) => `u:${chatId}:favs`;
 const blockKey = (chatId) => `u:${chatId}:block`;
 const subsKey = (chatId) => `u:${chatId}:subs`;
+const settingsKey = (chatId) => `u:${chatId}:settings`;
 const SUB_CHATS_KEY = 'subs:chats';
+const QUIZ_KEY = 'quiz:scores';
+
+export const DEFAULT_SETTINGS = {
+    rating: 'general', // рейтинг по умолчанию
+    count: 3,          // сколько картинок в быстром режиме
+    quick: false,      // быстрый режим: искать сразу, без подтверждения
+    safe: false        // безопасный режим: никогда не показывать 18+
+};
 
 export function createUserData(store) {
     const list = async (key) => (await store.get(key)) ?? [];
@@ -102,5 +111,46 @@ export function createUserData(store) {
         }
     };
 
-    return { favorites, blocklist, subscriptions };
+    // ---------- Настройки ----------
+    const settings = {
+        async get(chatId) {
+            return { ...DEFAULT_SETTINGS, ...((await store.get(settingsKey(chatId))) ?? {}) };
+        },
+
+        async update(chatId, patch) {
+            const next = { ...(await settings.get(chatId)), ...patch };
+            await store.set(settingsKey(chatId), next);
+            return next;
+        }
+    };
+
+    // ---------- Викторина ----------
+    const quiz = {
+        async record(user, correct) {
+            const scores = (await store.get(QUIZ_KEY)) ?? {};
+            const entry = scores[user.id] ?? { name: '', correct: 0, total: 0, streak: 0, best: 0 };
+            entry.name = user.first_name || user.username || String(user.id);
+            entry.total++;
+            if (correct) {
+                entry.correct++;
+                entry.streak++;
+                entry.best = Math.max(entry.best, entry.streak);
+            } else {
+                entry.streak = 0;
+            }
+            scores[user.id] = entry;
+            await store.set(QUIZ_KEY, scores);
+            return entry;
+        },
+
+        async leaderboard(limit = 10) {
+            const scores = (await store.get(QUIZ_KEY)) ?? {};
+            return Object.entries(scores)
+                .map(([id, s]) => ({ id: Number(id), ...s }))
+                .sort((a, b) => b.correct - a.correct || a.total - b.total)
+                .slice(0, limit);
+        }
+    };
+
+    return { favorites, blocklist, subscriptions, settings, quiz };
 }

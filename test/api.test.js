@@ -78,7 +78,9 @@ test('digest: авторизация и запуск без подписчико
 
     const forced = res();
     await digest({ headers: {}, query: { secret: 'cron-secret', force: '1' } }, forced);
-    assert.deepEqual(forced.body, { ok: true, status: 'done', chats: 0, delivered: 0 });
+    assert.equal(forced.statusCode, 200);
+    assert.deepEqual({ ...forced.body, recap: undefined }, { ok: true, status: 'done', chats: 0, delivered: 0, recap: undefined });
+    assert.ok(['not_due', 'empty', 'disabled'].includes(forced.body.recap));
 });
 
 test('autopost: выключен и ошибка', async (t) => {

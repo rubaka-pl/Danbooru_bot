@@ -3,6 +3,8 @@ import { sendAlbum, sendPost } from './sender.js';
 import { escapeHtml, humanizeTag, toHashtag } from '../utils/format.js';
 import { isQuietTime } from '../utils/quietHours.js';
 
+export const PAUSED_KEY = 'autopost:paused';
+
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 const firstTag = (value) => (value || '').split(' ').filter(Boolean)[0] ?? null;
 
@@ -23,14 +25,18 @@ async function remember({ history, channelStats }, message, post) {
 /**
  * Один автопост в канал: обычно одна картинка, иногда альбом.
  * Часть постов подбирается по тегам, которые собирают больше всего реакций.
- * @returns {Promise<'posted'|'album'|'quiet'|'empty'>}
+ * @param {boolean} [deps.force] — игнорировать паузу и тихие часы (команда /post)
+ * @returns {Promise<'posted'|'album'|'quiet'|'paused'|'empty'>}
  */
 export async function autopostOnce(deps) {
-    const { telegram, client, history, config, channelStats, now = new Date() } = deps;
+    const { telegram, client, history, config, channelStats, store, now = new Date(), force = false } = deps;
     const { autopost, danbooru } = config;
 
-    if (autopost.quietHours && isQuietTime(now, { ...autopost.quietHours, timeZone: autopost.timeZone })) {
-        return 'quiet';
+    if (!force) {
+        if (await store?.get(PAUSED_KEY)) return 'paused';
+        if (autopost.quietHours && isQuietTime(now, { ...autopost.quietHours, timeZone: autopost.timeZone })) {
+            return 'quiet';
+        }
     }
 
     // Примерно каждый N-й пост — sensitive (случайно, чтобы работало и без состояния)

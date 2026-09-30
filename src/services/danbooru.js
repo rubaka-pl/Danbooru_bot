@@ -148,6 +148,37 @@ export function createDanbooruClient({ baseUrl, login, apiKey, timeout = 15000, 
             return Array.isArray(body) ? body : [];
         },
 
+        /** Теги, похожие по написанию (опечатки): "hatsue_miku" → "hatsune_miku" */
+        async tagsFuzzy(name, limit = 5) {
+            const body = await request('/tags.json', {
+                'search[fuzzy_name_matches]': name,
+                'search[hide_empty]': 'true',
+                'search[order]': 'count',
+                limit
+            });
+            return Array.isArray(body) ? body : [];
+        },
+
+        /** Вики-страница тега или null */
+        async wiki(title) {
+            try {
+                return await request(`/wiki_pages/${encodeURIComponent(title)}.json`);
+            } catch (error) {
+                if (error.status === 404) return null;
+                throw error;
+            }
+        },
+
+        /** Связанные теги → [{ name, category, postCount }] */
+        async relatedTags(query, { category, limit = 15 } = {}) {
+            const body = await request('/related_tag.json', { query, category, limit });
+            const list = Array.isArray(body?.related_tags) ? body.related_tags : [];
+            return list
+                .map(item => item.tag ?? item)
+                .filter(tag => tag?.name && tag.name !== query)
+                .map(tag => ({ name: tag.name, category: tag.category ?? 0, postCount: tag.post_count ?? 0 }));
+        },
+
         postUrl(id) {
             return new URL(`/posts/${id}`, baseUrl).toString();
         }

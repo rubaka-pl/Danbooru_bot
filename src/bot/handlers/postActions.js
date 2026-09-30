@@ -1,12 +1,26 @@
 import { ratingFromCode } from '../../utils/ratings.js';
 import { BUSY_TEXT } from '../searchRunner.js';
+import { sendOriginal } from '../../services/sender.js';
 
 const firstTag = (value) => (value || '').split(' ').filter(Boolean)[0] ?? null;
 
 /**
  * Кнопки под картинкой: ❤️, «ещё автора», «ещё персонажа», «похожие».
  */
-export function registerPostActions(bot, { client, userData, runner }) {
+export function registerPostActions(bot, { client, config, userData, runner }) {
+    // 📥 Оригинал файлом
+    bot.action(/^dl:(\d+)$/, async (ctx) => {
+        const postId = Number(ctx.match[1]);
+        const started = runner.startTask(ctx, async () => {
+            const post = await client.post(postId);
+            const result = await sendOriginal(ctx.telegram, ctx.chat.id, post, { client, userAgent: config.danbooru.userAgent });
+            if (result === 'unavailable') {
+                await ctx.telegram.sendMessage(ctx.chat.id, '🔒 Оригинал этого поста недоступен без аккаунта Danbooru.');
+            }
+        });
+        await ctx.answerCbQuery(started ? '📥 Отправляю оригинал…' : BUSY_TEXT);
+    });
+
     // ❤️ Избранное
     bot.action(/^f:(\d+)$/, async (ctx) => {
         const postId = Number(ctx.match[1]);

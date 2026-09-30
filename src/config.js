@@ -52,6 +52,14 @@ export const config = {
         cronSecret: env.CRON_SECRET || ''
     },
 
+    // «🏆 Топ недели» в канале: день недели (0 — воскресенье) и час. RECAP=off — выключить.
+    recap: {
+        enabled: (env.RECAP || 'on').toLowerCase() !== 'off',
+        weekday: toInt(env.RECAP_WEEKDAY, 0),
+        hour: toInt(env.RECAP_HOUR, 20),
+        timeZone: env.TZ_NAME || 'Europe/Warsaw'
+    },
+
     subscriptions: {
         hour: toInt(env.DIGEST_HOUR, 12), // рассылка по подпискам — каждый день после этого часа
         timeZone: env.TZ_NAME || 'Europe/Warsaw',

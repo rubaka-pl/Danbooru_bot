@@ -6,6 +6,8 @@
 const MSG_TTL = 30 * 24 * 60 * 60; // реакции отслеживаем 30 дней
 const STATS_KEY = 'ch:tagstats';
 const MAX_TRACKED_TAGS = 1000;
+const RECENT_KEY = 'ch:recent';
+const MAX_RECENT = 300;
 
 const splitTags = (value) => (value || '').split(' ').filter(Boolean);
 
@@ -60,9 +62,12 @@ export function createChannelStats(store) {
 
     return {
         /** Запомнить, что в канал ушёл пост. */
-        async recordPost(messageId, post) {
+        async recordPost(messageId, post, { now = Date.now() } = {}) {
             const tags = statTags(post);
             await store.set(`ch:msg:${messageId}`, { postId: post.id, tags, reactions: 0 }, { ttlSeconds: MSG_TTL });
+            const recent = (await store.get(RECENT_KEY)) ?? [];
+            recent.push({ m: messageId, t: now });
+            await store.set(RECENT_KEY, recent.slice(-MAX_RECENT));
             const stats = await load();
             for (const tag of tags) {
                 const [posts = 0, reactions = 0] = stats[tag] ?? [];
@@ -88,6 +93,21 @@ export function createChannelStats(store) {
             }
             await store.set(STATS_KEY, stats);
             return true;
+        },
+
+        /**
+         * Лучшие посты канала за период по реакциям.
+         * @returns {Promise<Array<{ messageId, postId, reactions, tags }>>}
+         */
+        async bestPosts({ days = 7, limit = 5, now = Date.now() } = {}) {
+            const since = now - days * 24 * 60 * 60 * 1000;
+            const recent = ((await store.get(RECENT_KEY)) ?? []).filter(r => r.t >= since);
+            const records = [];
+            for (const { m } of recent) {
+                const record = await store.get(`ch:msg:${m}`);
+                if (record?.reactions > 0) records.push({ messageId: m, ...record });
+            }
+            return records.sort((a, b) => b.reactions - a.reactions).slice(0, limit);
         },
 
         async top(limit = 10) {

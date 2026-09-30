@@ -1,7 +1,7 @@
 import { Markup } from 'telegraf';
 import { findPosts } from '../../services/postSearch.js';
 import { parseUserInput } from '../../utils/query.js';
-import { DEFAULT_RATING, RATINGS } from '../../utils/ratings.js';
+import { DEFAULT_RATING, RATINGS, enforceSafe, isAdult } from '../../utils/ratings.js';
 import { buildCaption } from '../../utils/format.js';
 
 const PAGE_SIZE = 30;
@@ -41,6 +41,7 @@ export function registerInline(bot, { client, resolver, config, userData }) {
         const text = ctx.inlineQuery.query.trim();
         const page = Math.max(Number.parseInt(ctx.inlineQuery.offset, 10) || 1, 1);
         const blocked = await userData.blocklist.matcher(ctx.from.id);
+        const { safe } = await userData.settings.get(ctx.from.id);
         const hasBlocklist = (await userData.blocklist.list(ctx.from.id)).length > 0;
 
         let posts = [];
@@ -54,7 +55,7 @@ export function registerInline(bot, { client, resolver, config, userData }) {
                 if (group.tags.length || parsed.rating) {
                     posts = await findPosts(client, {
                         tags: group.tags,
-                        rating: RATINGS[parsed.rating] ? parsed.rating : DEFAULT_RATING,
+                        rating: enforceSafe(RATINGS[parsed.rating] ? parsed.rating : DEFAULT_RATING, safe).rating,
                         count: PAGE_SIZE,
                         tagLimit: config.danbooru.tagLimit,
                         random: false,
@@ -68,7 +69,7 @@ export function registerInline(bot, { client, resolver, config, userData }) {
         }
 
         const results = posts
-            .filter(p => !blocked(p))
+            .filter(p => !blocked(p) && !(safe && isAdult(p)))
             .map(p => toInlineResult(p, client))
             .filter(Boolean)
             .slice(0, PAGE_SIZE);

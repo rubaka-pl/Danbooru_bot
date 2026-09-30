@@ -4,6 +4,8 @@ import { minutesInZone } from '../utils/quietHours.js';
 import { escapeHtml } from '../utils/format.js';
 import { isMetatag } from '../utils/query.js';
 import { postKeyboard } from '../bot/request.js';
+import { isAdult } from '../utils/ratings.js';
+import { runRecapIfDue } from './recap.js';
 
 const LAST_RUN_KEY = 'subs:lastRun';
 
@@ -36,6 +38,7 @@ export async function deliverForChat({ telegram, client, config, userData }, cha
     if (!subs.length) return 0;
 
     const blocked = await userData.blocklist.matcher(chatId);
+    const { safe } = await userData.settings.get(chatId);
     const { perSub } = config.subscriptions;
     const userAgent = config.danbooru.userAgent;
     let delivered = 0;
@@ -52,7 +55,7 @@ export async function deliverForChat({ telegram, client, config, userData }, cha
         });
 
         const maxId = posts.reduce((max, p) => Math.max(max, p.id), sub.lastId ?? 0);
-        const fresh = posts.filter(p => p.id > (sub.lastId ?? 0) && !blocked(p));
+        const fresh = posts.filter(p => p.id > (sub.lastId ?? 0) && !blocked(p) && !(safe && isAdult(p)));
         if (maxId > (sub.lastId ?? 0)) {
             sub.lastId = maxId;
             changed = true;
@@ -109,9 +112,12 @@ export async function runDigestIfDue(deps, { now = new Date(), force = false } =
     return { status: 'done', chats: chats.length, delivered };
 }
 
-/** Проверка раз в 10 минут — для постоянно работающего сервера. */
+/** Проверка раз в 10 минут — для постоянно работающего сервера (рассылка + «Топ недели»). */
 export function startDigestLoop(deps) {
-    const tick = () => runDigestIfDue(deps).catch(error => console.error('❌ Рассылка:', error.message));
+    const tick = async () => {
+        await runDigestIfDue(deps).catch(error => console.error('❌ Рассылка:', error.message));
+        await runRecapIfDue(deps).catch(error => console.error('❌ Топ недели:', error.message));
+    };
     const timer = setInterval(tick, 10 * 60 * 1000);
     setTimeout(tick, 30 * 1000);
     return () => clearInterval(timer);

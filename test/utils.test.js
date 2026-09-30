@@ -74,7 +74,7 @@ test('клавиатуры', () => {
     assert.equal(searchKeyboard('general', [1], { subscribe: true }).reply_markup.inline_keyboard.at(-1)[0].callback_data, 'sub:general');
 
     const full = postKeyboard(makePost({ id: 5 })).reply_markup.inline_keyboard;
-    assert.deepEqual(full.flat().map(b => b.callback_data), ['f:5', 'sim:5', 'art:5', 'chr:5']);
+    assert.deepEqual(full.flat().map(b => b.callback_data), ['f:5', 'sim:5', 'dl:5', 'art:5', 'chr:5']);
     const bare = postKeyboard(makePost({ id: 6, tag_string_artist: '', tag_string_character: ' ' })).reply_markup.inline_keyboard;
-    assert.deepEqual(bare.flat().map(b => b.callback_data), ['f:6', 'sim:6']);
+    assert.deepEqual(bare.flat().map(b => b.callback_data), ['f:6', 'sim:6', 'dl:6']);
 });

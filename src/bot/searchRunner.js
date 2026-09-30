@@ -1,6 +1,6 @@
 import { findPosts } from '../services/postSearch.js';
 import { sendPost } from '../services/sender.js';
-import { ratingLabel } from '../utils/ratings.js';
+import { enforceSafe, isAdult, ratingLabel } from '../utils/ratings.js';
 import { escapeHtml } from '../utils/format.js';
 import { describeRating, formatGroupLine, postKeyboard, searchKeyboard } from './request.js';
 import { seenFor, tryLock, unlock } from './chatState.js';
@@ -30,11 +30,12 @@ export function createSearchRunner({ client, config, userData, runTask }) {
     const { counts, sendDelayMs } = config.search;
     const tagLimit = config.danbooru.tagLimit;
 
-    /** Фильтр: уже видел или есть тег из блок-листа. */
+    /** Фильтр: уже видел, есть тег из блок-листа или 18+ в безопасном режиме. */
     async function skipFor(chatId) {
         const seen = seenFor(chatId);
         const blocked = await userData.blocklist.matcher(chatId);
-        return (post) => seen.has(post.md5) || blocked(post);
+        const { safe } = await userData.settings.get(chatId);
+        return (post) => seen.has(post.md5) || blocked(post) || (safe && isAdult(post));
     }
 
     /** Отправляет посты по одному с кнопками. @returns число отправленных */
@@ -61,7 +62,12 @@ export function createSearchRunner({ client, config, userData, runTask }) {
     /**
      * Ищет и отправляет картинки по группам тегов.
      */
-    async function runSearch(telegram, chatId, groups, rating, count, { finalKeyboard = true, header } = {}) {
+    async function runSearch(telegram, chatId, groups, requestedRating, count, { finalKeyboard = true, header } = {}) {
+        const settings = await userData.settings.get(chatId);
+        const { rating, changed } = enforceSafe(requestedRating, settings.safe);
+        if (changed) {
+            await telegram.sendMessage(chatId, '🔒 Включён безопасный режим — ищу только safe. Выключить: /settings');
+        }
         const progress = await telegram.sendMessage(chatId, `🔍 Ищу… (${ratingLabel(rating)})`);
         const skip = await skipFor(chatId);
 
@@ -118,7 +124,15 @@ export function createSearchRunner({ client, config, userData, runTask }) {
         return startTask(ctx, () => runSearch(ctx.telegram, ctx.chat.id, groups, rating, count, options));
     }
 
-    return { runSearch, startSearch, startTask, sendResults, skipFor };
+    /** Поиск с настройками пользователя (рейтинг и количество по умолчанию). */
+    function startDefaultSearch(ctx, groups, options = {}) {
+        return startTask(ctx, async () => {
+            const settings = await userData.settings.get(ctx.chat.id);
+            await runSearch(ctx.telegram, ctx.chat.id, groups, options.rating ?? settings.rating, settings.count, options);
+        });
+    }
+
+    return { runSearch, startSearch, startDefaultSearch, startTask, sendResults, skipFor };
 }
 
 export async function reportError(telegram, chatId, error) {

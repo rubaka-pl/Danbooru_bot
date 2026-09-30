@@ -126,5 +126,17 @@ export function createTagResolver(client, { cacheSize = 1000 } = {}) {
         return { label: group.label, tags, unresolved };
     }
 
-    return { resolve, resolveGroup };
+    /**
+     * Подсказки для ненайденного тега (опечатки): до 3 похожих по написанию тегов.
+     */
+    async function suggest(raw) {
+        const name = hasCyrillic(raw) ? transliterate(raw) : raw;
+        const fuzzy = await safe(() => client.tagsFuzzy(name, 5)) ?? [];
+        return fuzzy
+            .filter(t => t?.name && t.post_count > 0)
+            .map(toTag)
+            .slice(0, 3);
+    }
+
+    return { resolve, resolveGroup, suggest };
 }

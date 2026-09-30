@@ -37,16 +37,17 @@ async function download(url, userAgent, limit) {
  * @param {object} options
  * @param {string} [options.query] — строка "Запрос: ..." в подписи
  * @param {string} [options.header] — строка в начале подписи (HTML)
+ * @param {string} [options.caption] — своя подпись вместо стандартной
  * @param {object} [options.extra] — доп. параметры Telegram (reply_markup и т.п.)
  * @returns {Promise<object|null>} отправленное сообщение или null
  */
-export async function sendPost(telegram, chatId, post, { client, userAgent, query, header, extra = {} }) {
+export async function sendPost(telegram, chatId, post, { client, userAgent, query, header, caption, extra = {} }) {
     const media = pickMedia(post, client.baseUrl);
     if (!media) return null;
 
     const method = METHODS[media.type];
     const options = {
-        caption: buildCaption(post, { postUrl: client.postUrl(post.id), query, header }),
+        caption: caption ?? buildCaption(post, { postUrl: client.postUrl(post.id), query, header }),
         parse_mode: 'HTML',
         ...extra
     };
@@ -105,4 +106,48 @@ export async function sendAlbum(telegram, chatId, posts, { client, userAgent, he
         messages = await telegram.sendMediaGroup(chatId, build(sources));
     }
     return messages.map((message, index) => ({ message, post: items[index].post }));
+}
+
+const MAX_DOCUMENT_BY_URL = 20 * 1024 * 1024;
+const MAX_DOCUMENT_UPLOAD = 50 * 1024 * 1024;
+
+const formatSize = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+
+/**
+ * Отправляет оригинал в полном разрешении файлом (без сжатия Telegram).
+ * @returns {Promise<'sent'|'link'|'unavailable'>}
+ */
+export async function sendOriginal(telegram, chatId, post, { client, userAgent }) {
+    const url = post.file_url
+        ? (post.file_url.startsWith('http') ? post.file_url : new URL(post.file_url, client.baseUrl).toString())
+        : null;
+    if (!url) return 'unavailable';
+
+    const size = post.file_size ?? 0;
+    const caption = `📥 Оригинал · ${post.image_width ?? '?'}×${post.image_height ?? '?'} · ${formatSize(size)}`;
+    const filename = `danbooru_${post.id}.${post.file_ext}`;
+    const sendLink = async () => {
+        await telegram.sendMessage(chatId, `📥 Файл слишком большой для Telegram (${formatSize(size)}). Скачать: ${url}`);
+        return 'link';
+    };
+
+    if (size > MAX_DOCUMENT_UPLOAD) return sendLink();
+
+    if (size <= MAX_DOCUMENT_BY_URL) {
+        try {
+            await telegram.sendDocument(chatId, url, { caption });
+            return 'sent';
+        } catch (error) {
+            if (isFatalTelegramError(error)) throw error;
+        }
+    }
+
+    try {
+        const source = await download(url, userAgent, MAX_DOCUMENT_UPLOAD);
+        await telegram.sendDocument(chatId, { source, filename }, { caption });
+        return 'sent';
+    } catch (error) {
+        if (isFatalTelegramError(error)) throw error;
+        return sendLink();
+    }
 }

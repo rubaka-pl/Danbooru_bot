@@ -62,3 +62,15 @@ export function isNsfwTag(tag) {
 export function ratingFromCode(code) {
     return { g: 'general', s: 'sensitive', q: 'explicit', e: 'explicit' }[code] ?? DEFAULT_RATING;
 }
+
+/**
+ * Безопасный режим: 18+ и «любой» превращаются в safe.
+ * @returns {{ rating: string, changed: boolean }}
+ */
+export function enforceSafe(rating, safe) {
+    if (safe && (rating === 'explicit' || rating === 'any')) return { rating: 'general', changed: true };
+    return { rating, changed: false };
+}
+
+/** Пост с рейтингом questionable или explicit */
+export const isAdult = (post) => post.rating === 'q' || post.rating === 'e';

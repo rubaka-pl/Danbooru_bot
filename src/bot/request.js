@@ -64,7 +64,11 @@ export function postKeyboard(post) {
         hasCharacter && Markup.button.callback('👤 Ещё персонажа', `chr:${post.id}`)
     ].filter(Boolean);
     return Markup.inlineKeyboard([
-        [Markup.button.callback('❤️', `f:${post.id}`), Markup.button.callback('🔍 Похожие', `sim:${post.id}`)],
+        [
+            Markup.button.callback('❤️', `f:${post.id}`),
+            Markup.button.callback('🔍 Похожие', `sim:${post.id}`),
+            Markup.button.callback('📥 Оригинал', `dl:${post.id}`)
+        ],
         ...(row2.length ? [row2] : [])
     ]);
 }

@@ -1,9 +1,9 @@
 // Запуск в режиме постоянного сервера (Render, VPS, локально): long polling + автопост по таймеру.
-import http from 'node:http';
 import { ALLOWED_UPDATES, createApp } from './app.js';
 import { startAutopostLoop } from './services/autopost.js';
 import { startDigestLoop } from './services/subscriptions.js';
 import { COMMANDS } from './bot/handlers/start.js';
+import { createHttpServer } from './server.js';
 
 const app = createApp();
 const { bot, config, history, store } = app;
@@ -11,12 +11,21 @@ const { bot, config, history, store } = app;
 await history.load();
 await store.load();
 
-// Render требует открытый порт — простой health-check
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('Bot is running.');
+// Render требует открытый порт: / — для keep-alive, /health — для автоперезапуска
+const server = createHttpServer(app);
+server.listen(config.port, () => console.log(`🌐 Health-check на порту ${config.port} (/health)`));
+
+// Непойманные ошибки: логируем и сообщаем админу. После uncaughtException процесс
+// в неизвестном состоянии — выходим, хостинг перезапустит бота.
+process.on('unhandledRejection', (error) => {
+    console.error('❌ unhandledRejection:', error);
+    app.alerts.notify('unhandled', `Необработанная ошибка: ${error?.message ?? error}`).catch(() => {});
 });
-server.listen(config.port, () => console.log(`🌐 Health-check на порту ${config.port}`));
+process.on('uncaughtException', async (error) => {
+    console.error('❌ uncaughtException:', error);
+    await app.alerts.notify('uncaught', `Бот упал и перезапускается: ${error?.message ?? error}`).catch(() => {});
+    process.exit(1);
+});
 
 let stopAutopost = () => {};
 if (config.autopost.enabled && config.autopost.channelId) {

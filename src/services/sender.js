@@ -52,15 +52,18 @@ export async function sendPost(telegram, chatId, post, { client, userAgent, quer
         ...extra
     };
 
-    try {
-        return await telegram[method](chatId, media.url, options);
-    } catch (error) {
-        if (isFatalTelegramError(error)) throw error;
-        console.warn(`⚠️ Telegram не принял ссылку (пост ${post.id}): ${error.message}`);
+    // 1) оригинал по ссылке, 2) уменьшенная копия по ссылке, 3) загрузка файлом
+    for (const url of [media.url, media.fallbackUrl].filter(Boolean)) {
+        try {
+            return await telegram[method](chatId, url, options);
+        } catch (error) {
+            if (isFatalTelegramError(error)) throw error;
+            console.warn(`⚠️ Telegram не принял ссылку (пост ${post.id}): ${error.message}`);
+        }
     }
 
     try {
-        const source = await download(media.url, userAgent, MAX_UPLOAD[media.type]);
+        const source = await download(media.fallbackUrl ?? media.url, userAgent, MAX_UPLOAD[media.type]);
         return await telegram[method](chatId, { source, filename: `danbooru_${post.id}.${post.file_ext}` }, options);
     } catch (error) {
         if (isFatalTelegramError(error)) throw error;
@@ -90,16 +93,27 @@ export async function sendAlbum(telegram, chatId, posts, { client, userAgent, he
             : buildCaption(post, { postUrl: client.postUrl(post.id), compact: true })
     }));
 
+    // 1) оригиналы по ссылкам, 2) уменьшенные копии, 3) загрузка файлами
+    const attempts = [
+        items.map(i => i.media.url),
+        items.some(i => i.media.fallbackUrl) ? items.map(i => i.media.fallbackUrl ?? i.media.url) : null
+    ].filter(Boolean);
+
     let messages;
-    try {
-        messages = await telegram.sendMediaGroup(chatId, build(items.map(i => i.media.url)));
-    } catch (error) {
-        if (isFatalTelegramError(error)) throw error;
-        console.warn(`⚠️ Альбом по ссылкам не ушёл: ${error.message} — загружаю файлы`);
+    for (const urls of attempts) {
+        try {
+            messages = await telegram.sendMediaGroup(chatId, build(urls));
+            break;
+        } catch (error) {
+            if (isFatalTelegramError(error)) throw error;
+            console.warn(`⚠️ Альбом по ссылкам не ушёл: ${error.message}`);
+        }
+    }
+    if (!messages) {
         const sources = [];
         for (const { post, media } of items) {
             sources.push({
-                source: await download(media.url, userAgent, MAX_UPLOAD[media.type]),
+                source: await download(media.fallbackUrl ?? media.url, userAgent, MAX_UPLOAD[media.type]),
                 filename: `danbooru_${post.id}.${post.file_ext}`
             });
         }
@@ -117,14 +131,15 @@ const formatSize = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
  * Отправляет оригинал в полном разрешении файлом (без сжатия Telegram).
  * @returns {Promise<'sent'|'link'|'unavailable'>}
  */
-export async function sendOriginal(telegram, chatId, post, { client, userAgent }) {
+export async function sendOriginal(telegram, chatId, post, { client, userAgent, header }) {
     const url = post.file_url
         ? (post.file_url.startsWith('http') ? post.file_url : new URL(post.file_url, client.baseUrl).toString())
         : null;
     if (!url) return 'unavailable';
 
     const size = post.file_size ?? 0;
-    const caption = `📥 Оригинал · ${post.image_width ?? '?'}×${post.image_height ?? '?'} · ${formatSize(size)}`;
+    const caption = [header, `📥 Оригинал · ${post.image_width ?? '?'}×${post.image_height ?? '?'} · ${formatSize(size)}`, client.postUrl(post.id)]
+        .filter(Boolean).join('\n');
     const filename = `danbooru_${post.id}.${post.file_ext}`;
     const sendLink = async () => {
         await telegram.sendMessage(chatId, `📥 Файл слишком большой для Telegram (${formatSize(size)}). Скачать: ${url}`);

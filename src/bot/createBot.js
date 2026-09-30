@@ -12,10 +12,16 @@ import { registerForYou } from './handlers/forYou.js';
 import { registerQuiz } from './handlers/quiz.js';
 import { registerInfo } from './handlers/info.js';
 import { registerAdmin } from './handlers/admin.js';
+import { registerProfile } from './handlers/profile.js';
 import { registerSearchHandlers, registerTextSearch } from './handlers/search.js';
 
 export function createBot(deps) {
     const bot = new Telegraf(deps.config.botToken, { handlerTimeout: 60_000 });
+
+    bot.use((ctx, next) => {
+        deps.health?.markUpdate();
+        return next();
+    });
 
     registerStartHandlers(bot);
     registerChannel(bot, deps);
@@ -30,12 +36,14 @@ export function createBot(deps) {
     registerQuiz(bot, deps);
     registerInfo(bot, deps);
     registerAdmin(bot, deps);
+    registerProfile(bot, deps);
     registerSearchHandlers(bot, deps);
     // Обычный текст — последним, чтобы не перехватывать команды
     registerTextSearch(bot, deps);
 
     bot.catch((error, ctx) => {
         console.error(`❌ Ошибка в обработчике (${ctx.updateType}):`, error);
+        deps.alerts?.notify('handler', `Ошибка в обработчике (${ctx.updateType}): ${error?.message ?? error}`).catch(() => {});
     });
 
     return bot;

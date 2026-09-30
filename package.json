@@ -5,14 +5,15 @@
   "main": "src/index.js",
   "type": "module",
   "engines": {
-    "node": ">=18.17"
+    "node": ">=20.11"
   },
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test",
     "webhook:set": "node scripts/setWebhook.js",
     "webhook:delete": "node scripts/setWebhook.js --delete",
-    "test:coverage": "node --test --experimental-test-coverage"
+    "test:coverage": "node --test --experimental-test-coverage",
+    "check:danbooru": "node scripts/checkDanbooru.js"
   },
   "license": "ISC",
   "dependencies": {

@@ -27,7 +27,8 @@ export const config = {
         counts: [1, 3, 5, 10],
         maxGroups: 10,       // максимум строк (отдельных поисков) в одном сообщении
         maxTermsPerGroup: 6, // максимум тегов в одной строке
-        sendDelayMs: 1200    // пауза между картинками, чтобы не упереться в лимиты Telegram
+        sendDelayMs: 1200,   // пауза между картинками, чтобы не упереться в лимиты Telegram
+        hourlyLimit: toInt(env.USER_HOURLY_LIMIT, 200) // картинок в час на пользователя (0 — без лимита; админам не действует)
     },
 
     autopost: {
@@ -40,6 +41,8 @@ export const config = {
         // Примерно каждый N-й автопост — альбом из 5–10 картинок (0 — без альбомов)
         albumEvery: toInt(env.ALBUM_EVERY, 8),
         albumSize: [5, 10],
+        // Примерно каждый N-й автопост — «⚔️ Битва артов» с опросом (0 — выкл.)
+        battleEvery: toInt(env.BATTLE_EVERY, 25),
         // Доля постов, подобранных по статистике реакций в канале (0..1)
         adaptiveShare: Number.parseFloat(env.ADAPTIVE_SHARE ?? '0.4'),
         historyFile: path.resolve(env.HISTORY_FILE || './data/sent_images.json'),

@@ -89,12 +89,13 @@ test('кнопка поиска присылает картинки с кноп�
 
     const photos = tg.calls('sendPhoto');
     assert.equal(photos.length, 3);
-    const buttons = photos[0].payload.reply_markup.inline_keyboard.flat().map(b => b.callback_data);
+    const buttons = photos[0].payload.reply_markup.inline_keyboard.flat().map(b => b.callback_data).filter(Boolean);
     assert.ok(buttons.some(d => d.startsWith('f:')));
     assert.ok(buttons.some(d => d.startsWith('sim:')));
     assert.ok(buttons.some(d => d.startsWith('art:')));
     assert.ok(buttons.some(d => d.startsWith('chr:')));
-    assert.ok(photos[0].payload.photo.includes('/sample/'));
+    assert.ok(photos[0].payload.photo.includes('/original/')); // полное качество
+    assert.ok(photos[0].payload.reply_markup.inline_keyboard.flat().some(b => b.text === '🖼 View original' && b.url.includes('/original/')));
 
     const posts = t.client.calls.filter(c => c[0] === 'posts');
     // random: занимает слот — на сервер уходит 1 тег, второй фильтруется ботом
@@ -142,12 +143,11 @@ test('пока идёт поиск, второй запрос получает �
     await t.settle();
 });
 
-test('если Telegram не принял ссылку — бот загружает файл сам', async () => {
+test('если Telegram не принял оригинал — шлёт копию, а если и её нет — загружает файл сам', async () => {
     tg.restore();
-    let first = true;
-    tg = mockTelegram((method) => {
-        if (method === 'sendPhoto' && first) {
-            first = false;
+    let rejects = 1;
+    tg = mockTelegram((method, payload) => {
+        if (method === 'sendPhoto' && typeof payload.photo === 'string' && rejects-- > 0) {
             throw new Error('wrong file identifier/HTTP URL specified');
         }
         return undefined;
@@ -157,8 +157,19 @@ test('если Telegram не принял ссылку — бот загружа
         const t = createTestBot();
         await t.click('s:general:1', { text: '🔹 hatsune_miku' });
         await t.settle();
+        const photos = tg.calls('sendPhoto').map(c => c.payload.photo);
+        assert.match(photos[0], /\/original\//);
+        assert.match(photos[1], /\/sample\//);
+        assert.equal(fetchMock.calls.length, 0);
+
+        // Обе ссылки не приняты — загрузка файлом
+        rejects = 2;
+        tg.clear();
+        await t.click('s:general:1', { text: '🔹 hatsune_miku' });
+        await t.settle();
         assert.equal(fetchMock.calls.length, 1);
-        assert.equal(tg.calls('sendPhoto').length, 2);
+        assert.match(fetchMock.calls[0].url, /\/sample\//);
+        assert.equal(tg.calls('sendPhoto').length, 3);
     } finally {
         fetchMock.restore();
     }

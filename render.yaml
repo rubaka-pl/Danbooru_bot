@@ -1,0 +1,26 @@
+# Render Blueprint: New → Blueprint → выбери репозиторий — сервис создастся сам.
+# Секреты (sync: false) Render спросит при создании.
+services:
+  - type: web
+    name: danbooru-bot
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health   # если бот завис — Render перезапустит его сам
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: BOT_TOKEN
+        sync: false
+      - key: GROUP_ID
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: TZ_NAME
+        value: Europe/Warsaw

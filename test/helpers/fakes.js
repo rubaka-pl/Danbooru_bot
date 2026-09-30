@@ -8,6 +8,9 @@ import { createChannelStats } from '../../src/services/channelStats.js';
 import { createTagResolver } from '../../src/services/tagResolver.js';
 import { createSearchRunner } from '../../src/bot/searchRunner.js';
 import { createBot } from '../../src/bot/createBot.js';
+import { resetChatState } from '../../src/bot/chatState.js';
+import { createAlerts } from '../../src/services/alerts.js';
+import { createHealth } from '../../src/services/health.js';
 
 export const BASE = 'https://danbooru.donmai.us';
 
@@ -139,6 +142,7 @@ export function mockTelegram(responder) {
 
 /** Собирает бота с фейковыми зависимостями. */
 export function createTestBot({ client = fakeClient(), config = testConfig() } = {}) {
+    resetChatState();
     const tasks = [];
     const store = new MemoryStore();
     const history = new MemoryHistory();
@@ -147,8 +151,11 @@ export function createTestBot({ client = fakeClient(), config = testConfig() } =
     const runTask = (promise) => tasks.push(promise);
     const runner = createSearchRunner({ client, config, userData, runTask });
     const resolver = createTagResolver(client);
-    const deps = { config, client, resolver, history, store, userData, channelStats, runner, runTask };
-    const bot = createBot(deps);
+    let bot;
+    const alerts = createAlerts({ getTelegram: () => bot.telegram, config });
+    const health = createHealth();
+    const deps = { config, client, resolver, history, store, userData, channelStats, runner, runTask, alerts, health };
+    bot = createBot(deps);
     bot.botInfo = { id: 1, is_bot: true, username: 'test_bot', first_name: 'Test' };
 
     let updateId = 1;

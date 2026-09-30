@@ -2,6 +2,7 @@ import { findPosts } from './postSearch.js';
 import { sendAlbum, sendPost } from './sender.js';
 import { escapeHtml, humanizeTag, toHashtag } from '../utils/format.js';
 import { isQuietTime } from '../utils/quietHours.js';
+import { channelKeyboard } from '../bot/request.js';
 
 export const PAUSED_KEY = 'autopost:paused';
 
@@ -26,7 +27,7 @@ async function remember({ history, channelStats }, message, post) {
  * Один автопост в канал: обычно одна картинка, иногда альбом.
  * Часть постов подбирается по тегам, которые собирают больше всего реакций.
  * @param {boolean} [deps.force] — игнорировать паузу и тихие часы (команда /post)
- * @returns {Promise<'posted'|'album'|'quiet'|'paused'|'empty'>}
+ * @returns {Promise<'posted'|'album'|'battle'|'quiet'|'paused'|'empty'>}
  */
 export async function autopostOnce(deps) {
     const { telegram, client, history, config, channelStats, store, now = new Date(), force = false } = deps;
@@ -47,6 +48,13 @@ export async function autopostOnce(deps) {
     const userAgent = danbooru.userAgent;
 
     const likedTag = Math.random() < autopost.adaptiveShare ? await channelStats?.pickLikedTag() : null;
+
+    const wantBattle = autopost.battleEvery > 0 && Math.random() < 1 / autopost.battleEvery;
+    if (wantBattle) {
+        const result = await postBattle({ ...deps, search, defaultTags, themed, likedTag });
+        if (result) return result;
+    }
+
     const wantAlbum = autopost.albumEvery > 0 && Math.random() < 1 / autopost.albumEvery;
 
     if (wantAlbum) {
@@ -76,7 +84,7 @@ export async function autopostOnce(deps) {
     for (const tags of queries) {
         const posts = await freshPosts(await search(tags, 1), history, 5);
         for (const post of posts) {
-            const message = await sendPost(telegram, autopost.channelId, post, { client, userAgent });
+            const message = await sendPost(telegram, autopost.channelId, post, { client, userAgent, extra: channelKeyboard(post, client.baseUrl) });
             if (!message) continue;
             await remember(deps, message, post);
             console.log(`✅ Автопост: пост ${post.id} (${rating}${likedTag ? `, по реакциям: ${likedTag}` : ''})`);
@@ -87,14 +95,60 @@ export async function autopostOnce(deps) {
 }
 
 /**
+ * «⚔️ Битва артов»: два персонажа альбомом + опрос «кто круче?».
+ * @returns {Promise<'battle'|null>} null — не получилось собрать битву
+ */
+async function postBattle({ telegram, client, history, config, channelStats, search, defaultTags, themed, likedTag }) {
+    const { autopost, danbooru } = config;
+
+    // Два разных персонажа: из «залайканных» или из случайных хороших постов
+    const fighters = [];
+    if (likedTag) fighters.push(likedTag);
+    const second = await channelStats?.pickLikedTag({ exclude: fighters });
+    if (second) fighters.push(second);
+    if (fighters.length < 2) {
+        for (const post of await search(defaultTags, 10)) {
+            const character = firstTag(post.tag_string_character);
+            if (character && !fighters.includes(character)) fighters.push(character);
+            if (fighters.length === 2) break;
+        }
+    }
+    if (fighters.length < 2) return null;
+
+    const posts = [];
+    for (const tag of fighters.slice(0, 2)) {
+        const withTag = (await search(themed(tag), 1)).filter(p => (p.tag_string || '').split(' ').includes(tag));
+        const [post] = await freshPosts(withTag, history, 1);
+        if (!post) return null;
+        posts.push(post);
+    }
+
+    const [a, b] = fighters.map(humanizeTag);
+    const header = `⚔️ <b>Битва артов:</b> ${escapeHtml(a)} vs ${escapeHtml(b)}\nГолосуйте в опросе ниже 👇`;
+    const sent = await sendAlbum(telegram, autopost.channelId, posts, { client, userAgent: danbooru.userAgent, header });
+    if (sent.length < 2) return null;
+    for (const { message, post } of sent) await remember({ history, channelStats }, message, post);
+
+    const poll = await telegram.sendPoll(autopost.channelId, '⚔️ Кто круче?', [
+        { text: `1️⃣ ${a}`.slice(0, 100) },
+        { text: `2️⃣ ${b}`.slice(0, 100) }
+    ], { is_anonymous: true });
+    if (poll?.poll?.id) await channelStats?.recordBattle(poll.poll.id, fighters.slice(0, 2));
+    console.log(`✅ Автопост: битва ${fighters[0]} vs ${fighters[1]}`);
+    return 'battle';
+}
+
+/**
  * Бесконечный цикл автопоста для постоянно работающего сервера.
  * При 429 интервал увеличивается, после успеха — возвращается к обычному.
  */
 export function startAutopostLoop(deps) {
     const { intervalMs, maxBackoffMs } = deps.config.autopost;
+    const { alerts, health } = deps;
     let delay = intervalMs;
     let timer = null;
     let wasQuiet = false;
+    let emptyStreak = 0;
 
     const tick = async () => {
         try {
@@ -103,10 +157,20 @@ export function startAutopostLoop(deps) {
             if (result !== 'quiet' && wasQuiet) console.log('☀️ Тихие часы закончились');
             wasQuiet = result === 'quiet';
             delay = intervalMs;
+            health?.markAutopost(result);
+            await alerts?.success('autopost', { label: 'Автопост' });
+
+            emptyStreak = result === 'empty' ? emptyStreak + 1 : 0;
+            if (emptyStreak === 10) {
+                await alerts?.notify('autopost-empty', 'Автопост 10 раз подряд не нашёл новых картинок. Проверь AUTOPOST-теги и рейтинг.');
+            }
         } catch (error) {
+            health?.markAutopostError();
+            const failures = (await alerts?.failure('autopost', error, { label: 'Автопост' })) ?? 1;
             const rateLimited = error?.isRateLimit || error?.response?.error_code === 429;
-            delay = rateLimited ? Math.min(delay * 2, maxBackoffMs) : intervalMs;
-            console.error(`❌ Ошибка автопоста: ${error.message}${rateLimited ? ` — пауза ${delay / 1000} сек` : ''}`);
+            // 429 — сразу увеличиваем паузу; другие ошибки — со второй подряд (Danbooru/Telegram лежат)
+            delay = rateLimited || failures >= 2 ? Math.min(delay * 2, maxBackoffMs) : intervalMs;
+            console.error(`❌ Ошибка автопоста: ${error.message}${delay > intervalMs ? ` — пауза ${delay / 1000} сек` : ''}`);
         } finally {
             timer = setTimeout(tick, delay);
         }

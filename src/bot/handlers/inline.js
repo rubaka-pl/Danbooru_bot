@@ -3,6 +3,7 @@ import { findPosts } from '../../services/postSearch.js';
 import { parseUserInput } from '../../utils/query.js';
 import { DEFAULT_RATING, RATINGS, enforceSafe, isAdult } from '../../utils/ratings.js';
 import { buildCaption } from '../../utils/format.js';
+import { originalFitsPhoto } from '../../utils/posts.js';
 
 const PAGE_SIZE = 30;
 const isJpeg = (url) => /\.jpe?g($|\?)/i.test(url || '');
@@ -23,7 +24,8 @@ export function toInlineResult(post, client) {
         };
     }
     // Для inline-фото Telegram принимает только JPEG
-    const photo = [post.large_file_url, post.file_url].map(u => abs(u, base)).find(isJpeg);
+    const candidates = originalFitsPhoto(post) ? [post.file_url, post.large_file_url] : [post.large_file_url, post.file_url];
+    const photo = candidates.map(u => abs(u, base)).find(isJpeg);
     if (!photo) return null;
     return {
         type: 'photo', id: String(post.id), photo_url: photo, thumbnail_url: thumb,
@@ -46,7 +48,11 @@ export function registerInline(bot, { client, resolver, config, userData }) {
 
         let posts = [];
         try {
-            if (!text) {
+            const byId = text.match(/^(?:id:|#)(\d+)$/i);
+            if (byId) {
+                // «📤 Поделиться» — конкретный арт
+                posts = [await client.post(Number(byId[1]))];
+            } else if (!text) {
                 // Пустой запрос — популярное за день (только safe)
                 posts = page === 1 ? (await client.popular({ scale: 'day' })).filter(p => p.rating === 'g') : [];
             } else {

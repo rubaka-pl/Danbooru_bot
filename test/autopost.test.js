@@ -69,7 +69,7 @@ test('sensitive-рейтинг и пост по «залайканному» т�
 });
 
 test('альбом по теме случайного поста', async (t) => {
-    randomSequence(t, [0.9, 0.9, 0.01, 0]); // general, без лайков, альбом, размер 5
+    randomSequence(t, [0.9, 0.9, 0.9, 0.01, 0]); // general, без лайков, без битвы, альбом, размер 5
     const client = fakeClient({ posts: async (params) => (client.calls.push(['posts', params]), Array.from({ length: 10 }, () => makePost())) });
     const deps = setup({ client });
     assert.equal(await autopostOnce(deps), 'album');
@@ -83,13 +83,13 @@ test('альбом по теме случайного поста', async (t) => 
 });
 
 test('альбом не собрался (мало картинок) → обычный пост; альбомы можно выключить', async (t) => {
-    randomSequence(t, [0.9, 0.9, 0.01, 0]);
+    randomSequence(t, [0.9, 0.9, 0.9, 0.01, 0]);
     const deps = setup({ client: fakeClient({ posts: async () => [makePost()] }) });
     assert.equal(await autopostOnce(deps), 'posted');
 
     const config = testConfig();
     config.autopost.albumEvery = 0;
-    randomSequence(t, [0.9, 0.9, 0]);
+    randomSequence(t, [0.9, 0.9, 0.9, 0]);
     const noAlbums = setup({ config });
     assert.equal(await autopostOnce(noAlbums), 'posted');
     assert.equal(noAlbums.telegram.calls[0][0], 'sendPhoto');

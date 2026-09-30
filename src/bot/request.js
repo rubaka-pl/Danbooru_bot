@@ -2,6 +2,7 @@ import { Markup } from 'telegraf';
 import { RATINGS, ratingLabel } from '../utils/ratings.js';
 import { escapeHtml, formatCount } from '../utils/format.js';
 import { isMetatag } from '../utils/query.js';
+import { originalUrl } from '../utils/posts.js';
 
 /*
  * Запрос хранится прямо в тексте сообщения бота (строки "🔹 ..."),
@@ -56,19 +57,29 @@ export function describeRating(rating) {
 }
 
 /** Кнопки под картинкой. */
-export function postKeyboard(post) {
+export function postKeyboard(post, baseUrl = 'https://danbooru.donmai.us') {
     const hasArtist = Boolean(post.tag_string_artist?.trim());
     const hasCharacter = Boolean(post.tag_string_character?.trim());
+    const original = originalUrl(post, baseUrl);
     const row2 = [
         hasArtist && Markup.button.callback('🎨 Ещё автора', `art:${post.id}`),
         hasCharacter && Markup.button.callback('👤 Ещё персонажа', `chr:${post.id}`)
     ].filter(Boolean);
     return Markup.inlineKeyboard([
+        [Markup.button.callback('❤️', `f:${post.id}`), Markup.button.callback('🔍 Похожие', `sim:${post.id}`)],
         [
-            Markup.button.callback('❤️', `f:${post.id}`),
-            Markup.button.callback('🔍 Похожие', `sim:${post.id}`),
-            Markup.button.callback('📥 Оригинал', `dl:${post.id}`)
+            // Открывает картинку в полном разрешении (в браузере / встроенном просмотре Telegram)
+            ...(original ? [Markup.button.url('🖼 View original', original)] : []),
+            Markup.button.callback('📥 Файлом', `dl:${post.id}`)
         ],
-        ...(row2.length ? [row2] : [])
+        ...(row2.length ? [row2] : []),
+        // Открывает выбор чата и вставляет «@бот id:123» — друг увидит именно этот арт
+        [Markup.button.switchToChat('📤 Поделиться', `id:${post.id}`)]
     ]);
+}
+
+/** Кнопка под постом в канале (в каналах работают только URL-кнопки). */
+export function channelKeyboard(post, baseUrl = 'https://danbooru.donmai.us') {
+    const original = originalUrl(post, baseUrl);
+    return original ? Markup.inlineKeyboard([[Markup.button.url('🖼 View original', original)]]) : {};
 }

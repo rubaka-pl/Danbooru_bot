@@ -13,6 +13,8 @@ const subsKey = (chatId) => `u:${chatId}:subs`;
 const settingsKey = (chatId) => `u:${chatId}:settings`;
 const SUB_CHATS_KEY = 'subs:chats';
 const QUIZ_KEY = 'quiz:scores';
+const historyKey = (chatId) => `u:${chatId}:history`;
+const MAX_HISTORY = 10;
 
 export const DEFAULT_SETTINGS = {
     rating: 'general', // рейтинг по умолчанию
@@ -143,6 +145,11 @@ export function createUserData(store) {
             return entry;
         },
 
+        async get(userId) {
+            const scores = (await store.get(QUIZ_KEY)) ?? {};
+            return scores[userId] ?? null;
+        },
+
         async leaderboard(limit = 10) {
             const scores = (await store.get(QUIZ_KEY)) ?? {};
             return Object.entries(scores)
@@ -152,5 +159,21 @@ export function createUserData(store) {
         }
     };
 
-    return { favorites, blocklist, subscriptions, settings, quiz };
+    // ---------- История запросов ----------
+    const history = {
+        list: (chatId) => list(historyKey(chatId)),
+
+        /** @param {string[]} tags — теги запроса ("-tag" для исключений) */
+        async add(chatId, tags) {
+            if (!tags.length) return;
+            const key = tags.join(' ');
+            const items = (await list(historyKey(chatId))).filter(item => item.join(' ') !== key);
+            items.unshift(tags);
+            await store.set(historyKey(chatId), items.slice(0, MAX_HISTORY));
+        },
+
+        clear: (chatId) => store.del(historyKey(chatId))
+    };
+
+    return { favorites, blocklist, subscriptions, settings, quiz, history };
 }

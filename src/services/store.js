@@ -120,3 +120,74 @@ export class MemoryStore {
         this.data.delete(key);
     }
 }
+
+/**
+ * Кэш в памяти поверх медленного хранилища (Redis) для постоянно работающего сервера:
+ * чтения — из памяти, записи — пачкой раз в flushMs. Экономит команды бесплатного Upstash.
+ * В serverless не используется: там несколько инстансов и кэш был бы несогласованным.
+ */
+export class CachedStore {
+    constructor(inner, { flushMs = 30_000 } = {}) {
+        this.inner = inner;
+        this.flushMs = flushMs;
+        this.cache = new Map();
+        this.dirty = new Set();
+        this.timer = null;
+    }
+
+    async load() {
+        await this.inner.load();
+    }
+
+    async get(key) {
+        const entry = this.cache.get(key);
+        if (entry) {
+            if (entry.exp && entry.exp < Date.now()) {
+                this.cache.delete(key);
+                return null;
+            }
+            return structuredClone(entry.v);
+        }
+        const value = await this.inner.get(key);
+        this.cache.set(key, { v: value, exp: 0 });
+        return structuredClone(value);
+    }
+
+    async set(key, value, { ttlSeconds } = {}) {
+        this.cache.set(key, { v: structuredClone(value), exp: ttlSeconds ? Date.now() + ttlSeconds * 1000 : 0 });
+        this.dirty.add(key);
+        this.schedule();
+    }
+
+    async del(key) {
+        this.cache.set(key, { v: null, exp: 0 });
+        this.dirty.delete(key);
+        await this.inner.del(key);
+    }
+
+    schedule() {
+        if (this.timer) return;
+        this.timer = setTimeout(() => {
+            this.timer = null;
+            this.save().catch(error => console.error('⚠️ Не удалось сохранить данные:', error.message));
+        }, this.flushMs);
+        this.timer.unref?.();
+    }
+
+    /** Записывает накопленные изменения. */
+    async save() {
+        const keys = [...this.dirty];
+        this.dirty.clear();
+        for (const key of keys) {
+            const entry = this.cache.get(key);
+            if (!entry) continue;
+            const ttlSeconds = entry.exp ? Math.max(1, Math.ceil((entry.exp - Date.now()) / 1000)) : undefined;
+            try {
+                await this.inner.set(key, entry.v, { ttlSeconds });
+            } catch (error) {
+                this.dirty.add(key); // попробуем в следующий раз
+                throw error;
+            }
+        }
+    }
+}

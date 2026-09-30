@@ -2,23 +2,49 @@ import { RATINGS } from './ratings.js';
 
 const PHOTO_EXT = new Set(['jpg', 'jpeg', 'png', 'webp']);
 const MAX_URL_FILE_SIZE = 20 * 1024 * 1024; // Telegram скачивает по URL файлы до 20 МБ
+// Ограничения Telegram для фото по ссылке: до 5 МБ, ширина+высота ≤ 10000, соотношение сторон ≤ 20
+const MAX_PHOTO_URL_SIZE = 5 * 1024 * 1024;
 
 function absolute(url, baseUrl) {
     if (!url) return null;
     return url.startsWith('http') ? url : new URL(url, baseUrl).toString();
 }
 
+/** Ссылка на оригинал в полном разрешении (или null, если скрыт). */
+export function originalUrl(post, baseUrl) {
+    return absolute(post.file_url, baseUrl);
+}
+
+/** Можно ли отправить оригинал как фото (по ограничениям Telegram). */
+export function originalFitsPhoto(post) {
+    const ext = post.file_ext?.toLowerCase();
+    const w = post.image_width ?? 0;
+    const h = post.image_height ?? 0;
+    return (ext === 'jpg' || ext === 'jpeg' || ext === 'png')
+        && Boolean(post.file_url)
+        && (post.file_size ?? Infinity) <= MAX_PHOTO_URL_SIZE
+        && w > 0 && h > 0
+        && w + h <= 10000
+        && Math.max(w, h) / Math.min(w, h) <= 20;
+}
+
 /**
  * Выбирает, как отправить пост в Telegram.
- * @returns {{ type: 'photo'|'animation'|'video', url: string } | null}
+ * Для фото берём оригинал в полном качестве, если Telegram его примет,
+ * иначе — уменьшенную копию (large_file_url). fallbackUrl — запасная ссылка.
+ * @returns {{ type: 'photo'|'animation'|'video', url: string, fallbackUrl?: string } | null}
  */
 export function pickMedia(post, baseUrl) {
     const ext = post.file_ext?.toLowerCase();
 
     if (PHOTO_EXT.has(ext)) {
-        // large_file_url — уменьшенная копия (~850px), Telegram её всегда принимает
-        const url = absolute(post.large_file_url || post.file_url, baseUrl);
-        return url ? { type: 'photo', url } : null;
+        const sample = absolute(post.large_file_url || post.file_url, baseUrl);
+        if (!sample) return null;
+        if (originalFitsPhoto(post)) {
+            const original = originalUrl(post, baseUrl);
+            return { type: 'photo', url: original, ...(original !== sample ? { fallbackUrl: sample } : {}) };
+        }
+        return { type: 'photo', url: sample };
     }
     if (ext === 'gif' && post.file_size <= MAX_URL_FILE_SIZE) {
         const url = absolute(post.file_url, baseUrl);

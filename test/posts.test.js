@@ -119,3 +119,14 @@ test('pickMedia: относительные ссылки, большие gif/mp4
     assert.equal(pickMedia({ file_ext: 'gif', file_size: 1 }, base), null);
     assert.equal(pickMedia({ file_ext: 'mp4', file_size: 1 }, base), null);
 });
+
+test('pickMedia: оригинал в полном качестве, если Telegram его примет', () => {
+    const post = { file_ext: 'png', file_url: 'https://x/o.png', large_file_url: 'https://x/s.jpg', file_size: 3_000_000, image_width: 2000, image_height: 3000 };
+    assert.deepEqual(pickMedia(post, base), { type: 'photo', url: 'https://x/o.png', fallbackUrl: 'https://x/s.jpg' });
+    // Слишком большой файл, огромное разрешение, вытянутая картинка, webp — уменьшенная копия
+    for (const change of [{ file_size: 6_000_000 }, { image_width: 9000, image_height: 3000 }, { image_width: 100, image_height: 3000 }, { file_ext: 'webp' }, { image_width: 0 }]) {
+        assert.deepEqual(pickMedia({ ...post, ...change }, base), { type: 'photo', url: 'https://x/s.jpg' });
+    }
+    // Нет копии — оригинал без запасного варианта
+    assert.deepEqual(pickMedia({ ...post, large_file_url: undefined }, base), { type: 'photo', url: 'https://x/o.png' });
+});

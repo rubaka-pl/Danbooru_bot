@@ -146,6 +146,9 @@ export function registerTextSearch(bot, deps) {
         const detected = found.some(g => g.tags.some(t => !t.negated && isNsfwTag(t.name))) ? 'explicit' : null;
         const rating = enforceSafe(parsed.rating ?? detected ?? settings.rating, settings.safe).rating;
         const groups = found.map(g => g.tags);
+        for (const tags of groups) {
+            await userData.history.add(ctx.chat.id, tags.map(t => `${t.negated ? '-' : ''}${t.name}`));
+        }
 
         // Быстрый режим — сразу ищем, без вопроса «сколько»
         if (settings.quick) {
@@ -176,6 +179,7 @@ export function registerTextSearch(bot, deps) {
     // 💡 Подсказка / кнопка тега — сразу искать с настройками пользователя
     bot.action(/^st:(.+)$/, async (ctx) => {
         const tag = ctx.match[1];
+        await userData.history.add(ctx.chat.id, [tag]);
         if (!runner.startDefaultSearch(ctx, [[{ name: tag, postCount: 0 }]])) {
             return ctx.answerCbQuery(BUSY_TEXT);
         }

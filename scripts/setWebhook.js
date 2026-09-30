@@ -5,7 +5,7 @@ import { Telegram } from 'telegraf';
 import { COMMANDS } from '../src/bot/handlers/start.js';
 
 // Не импортируем app.js, чтобы скрипту не нужен был весь конфиг
-const ALLOWED_UPDATES = ['message', 'callback_query', 'inline_query', 'message_reaction_count'];
+const ALLOWED_UPDATES = ['message', 'callback_query', 'inline_query', 'message_reaction_count', 'poll'];
 
 const { BOT_TOKEN, WEBHOOK_URL, WEBHOOK_SECRET } = process.env;
 if (!BOT_TOKEN) {

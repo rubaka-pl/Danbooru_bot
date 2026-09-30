@@ -76,6 +76,35 @@ export function createChannelStats(store) {
             await store.set(STATS_KEY, prune(stats));
         },
 
+        /** Запомнить «битву артов»: какой тег соответствует какому варианту опроса. */
+        async recordBattle(pollId, tags) {
+            await store.set(`ch:poll:${pollId}`, { tags, votes: tags.map(() => 0) }, { ttlSeconds: MSG_TTL });
+        },
+
+        /**
+         * Обновились голоса в опросе. Голоса считаются как реакции для тега варианта.
+         * @returns {Promise<boolean>} был ли это наш опрос
+         */
+        async updatePoll(pollId, counts) {
+            const record = await store.get(`ch:poll:${pollId}`);
+            if (!record) return false;
+            const stats = await load();
+            let changed = false;
+            record.tags.forEach((tag, i) => {
+                const delta = (counts[i] ?? 0) - (record.votes[i] ?? 0);
+                if (!delta) return;
+                changed = true;
+                record.votes[i] = counts[i] ?? 0;
+                const [posts = 1, reactions = 0] = stats[tag] ?? [];
+                stats[tag] = [posts, Math.max(0, reactions + delta)];
+            });
+            if (changed) {
+                await store.set(`ch:poll:${pollId}`, record, { ttlSeconds: MSG_TTL });
+                await store.set(STATS_KEY, stats);
+            }
+            return true;
+        },
+
         /** Пришло новое количество реакций на сообщение. */
         async updateReactions(messageId, total) {
             const record = await store.get(`ch:msg:${messageId}`);
@@ -115,8 +144,8 @@ export function createChannelStats(store) {
         },
 
         /** Случайный тег из самых «залайканных» (чем выше — тем вероятнее). */
-        async pickLikedTag({ top = 15 } = {}) {
-            const ranked = rankTags(await load()).filter(t => t.reactions > 0).slice(0, top);
+        async pickLikedTag({ top = 15, exclude = [] } = {}) {
+            const ranked = rankTags(await load()).filter(t => t.reactions > 0 && !exclude.includes(t.tag)).slice(0, top);
             if (!ranked.length) return null;
             const weights = ranked.map((t, i) => t.score * (top - i));
             let roll = Math.random() * weights.reduce((a, b) => a + b, 0);

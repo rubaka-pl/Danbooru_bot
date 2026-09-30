@@ -15,6 +15,16 @@ export function registerChannel(bot, { channelStats, config }) {
         }
     });
 
+    // Голоса в «битвах артов» (Telegram присылает обновления опросов, отправленных ботом)
+    bot.on('poll', async (ctx) => {
+        const poll = ctx.update.poll;
+        try {
+            await channelStats.updatePoll(poll.id, poll.options.map(o => o.voter_count));
+        } catch (error) {
+            console.error('❌ Опрос:', error.message);
+        }
+    });
+
     bot.command('stats', async (ctx) => {
         if (config.adminIds.length && !config.adminIds.includes(ctx.from.id)) {
             return ctx.reply('🔒 Статистика доступна только администраторам канала.');

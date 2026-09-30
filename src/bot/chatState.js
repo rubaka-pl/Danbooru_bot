@@ -33,3 +33,36 @@ export function seenFor(chatId) {
         }
     };
 }
+
+// ---------- Лимит картинок в час (защита от спама и лимитов Danbooru) ----------
+const HOUR = 60 * 60 * 1000;
+const sentTimes = new Map();
+
+function recentTimes(chatId, now) {
+    const times = (sentTimes.get(chatId) ?? []).filter(t => now - t < HOUR);
+    sentTimes.set(chatId, times);
+    return times;
+}
+
+export function recordSent(chatId, now = Date.now()) {
+    if (!sentTimes.has(chatId) && sentTimes.size >= MAX_CHATS) sentTimes.delete(sentTimes.keys().next().value);
+    recentTimes(chatId, now).push(now);
+}
+
+/**
+ * @returns {{ limited: boolean, retryInMinutes: number }}
+ */
+export function hourlyQuota(chatId, limit, now = Date.now()) {
+    if (!limit) return { limited: false, retryInMinutes: 0 };
+    const times = recentTimes(chatId, now);
+    if (times.length < limit) return { limited: false, retryInMinutes: 0 };
+    const oldest = times[times.length - limit];
+    return { limited: true, retryInMinutes: Math.max(1, Math.ceil((oldest + HOUR - now) / 60000)) };
+}
+
+/** Сброс состояния (для тестов). */
+export function resetChatState() {
+    busy.clear();
+    seen.clear();
+    sentTimes.clear();
+}

@@ -3,7 +3,7 @@ import { sendPost } from '../services/sender.js';
 import { enforceSafe, isAdult, ratingLabel } from '../utils/ratings.js';
 import { escapeHtml } from '../utils/format.js';
 import { describeRating, formatGroupLine, postKeyboard, searchKeyboard } from './request.js';
-import { seenFor, tryLock, unlock } from './chatState.js';
+import { hourlyQuota, recordSent, seenFor, tryLock, unlock } from './chatState.js';
 
 export const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -21,13 +21,17 @@ export async function withTelegramRetry(fn) {
     }
 }
 
+export const limitText = (minutes) =>
+    `⏳ Ты посмотрел много картинок за последний час. Передохни ~${minutes} мин — и продолжим!`;
+
 export const BUSY_TEXT = '⏳ Подожди, ещё отправляю предыдущие картинки';
 
 /**
  * Общая логика поиска и отправки картинок пользователю.
  */
 export function createSearchRunner({ client, config, userData, runTask }) {
-    const { counts, sendDelayMs } = config.search;
+    const { counts, sendDelayMs, hourlyLimit } = config.search;
+    const limitFor = (chatId) => (config.adminIds.includes(chatId) ? 0 : hourlyLimit);
     const tagLimit = config.danbooru.tagLimit;
 
     /** Фильтр: уже видел, есть тег из блок-листа или 18+ в безопасном режиме. */
@@ -44,15 +48,21 @@ export function createSearchRunner({ client, config, userData, runTask }) {
         let sent = 0;
         for (const post of posts) {
             if (sent >= count) break;
+            const quota = hourlyQuota(chatId, limitFor(chatId));
+            if (quota.limited) {
+                await telegram.sendMessage(chatId, limitText(quota.retryInMinutes));
+                break;
+            }
             const message = await withTelegramRetry(() => sendPost(telegram, chatId, post, {
                 client,
                 userAgent: config.danbooru.userAgent,
                 query,
                 header: sent === 0 ? header : undefined,
-                extra: postKeyboard(post)
+                extra: postKeyboard(post, client.baseUrl)
             }));
             if (!message) continue;
             seen.add(post.md5);
+            recordSent(chatId);
             sent++;
             if (sent < count) await sleep(sendDelayMs);
         }
@@ -111,6 +121,11 @@ export function createSearchRunner({ client, config, userData, runTask }) {
     function startTask(ctx, task) {
         const chatId = ctx.chat.id;
         if (!tryLock(chatId)) return false;
+        const quota = hourlyQuota(chatId, limitFor(chatId));
+        if (quota.limited) {
+            // Сообщаем о лимите вместо задачи
+            task = () => ctx.telegram.sendMessage(chatId, limitText(quota.retryInMinutes));
+        }
         runTask(
             Promise.resolve()
                 .then(task)

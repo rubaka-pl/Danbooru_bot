@@ -7,7 +7,7 @@ import { isQuietTime, minutesInZone } from '../src/utils/quietHours.js';
 import { isFreeMetatag } from '../src/utils/posts.js';
 import { isMetatag } from '../src/utils/query.js';
 import { seenFor, tryLock, unlock } from '../src/bot/chatState.js';
-import { postKeyboard, searchKeyboard } from '../src/bot/request.js';
+import { channelKeyboard, postKeyboard, searchKeyboard } from '../src/bot/request.js';
 import { makePost } from './helpers/fakes.js';
 
 test('транслит', () => {
@@ -73,8 +73,15 @@ test('клавиатуры', () => {
     assert.deepEqual(search[2].map(b => b.callback_data), ['s:sensitive:1', 's:sensitive:3']);
     assert.equal(searchKeyboard('general', [1], { subscribe: true }).reply_markup.inline_keyboard.at(-1)[0].callback_data, 'sub:general');
 
+    const label = (b) => b.callback_data ?? (b.url ? `url:${b.url}` : `share:${b.switch_inline_query}`);
     const full = postKeyboard(makePost({ id: 5 })).reply_markup.inline_keyboard;
-    assert.deepEqual(full.flat().map(b => b.callback_data), ['f:5', 'sim:5', 'dl:5', 'art:5', 'chr:5']);
-    const bare = postKeyboard(makePost({ id: 6, tag_string_artist: '', tag_string_character: ' ' })).reply_markup.inline_keyboard;
-    assert.deepEqual(bare.flat().map(b => b.callback_data), ['f:6', 'sim:6', 'dl:6']);
+    assert.deepEqual(full.flat().map(label), [
+        'f:5', 'sim:5', 'url:https://cdn.donmai.us/original/5.jpg', 'dl:5', 'art:5', 'chr:5', 'share:id:5'
+    ]);
+    const bare = postKeyboard(makePost({ id: 6, tag_string_artist: '', tag_string_character: ' ', file_url: undefined })).reply_markup.inline_keyboard;
+    assert.deepEqual(bare.flat().map(label), ['f:6', 'sim:6', 'dl:6', 'share:id:6']);
+
+    const channel = channelKeyboard(makePost({ id: 7, file_url: '/data/7.png' }), 'https://d.test').reply_markup.inline_keyboard;
+    assert.deepEqual(channel.flat().map(label), ['url:https://d.test/data/7.png']);
+    assert.deepEqual(channelKeyboard(makePost({ file_url: null })), {});
 });

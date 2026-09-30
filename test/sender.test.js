@@ -31,7 +31,7 @@ test('sendPost: фото по ссылке с HTML-подписью и доп. �
     assert.deepEqual(message, { message_id: 1 });
     const [call] = tg.calls;
     assert.equal(call.method, 'sendPhoto');
-    assert.match(call.media, /sample\/3\.jpg/);
+    assert.match(call.media, /original\/3\.jpg/);
     assert.equal(call.options.parse_mode, 'HTML');
     assert.match(call.options.caption, /^<b>H<\/b>/);
     assert.deepEqual(call.options.reply_markup, { x: 1 });
@@ -50,7 +50,9 @@ test('sendPost: запасная загрузка файлом и полный �
     const tg = fakeTelegram({ sendPhoto: (media) => { if (typeof media === 'string') throw new Error('bad url'); return { message_id: 9 }; } });
     const message = await sendPost(tg, 1, makePost({ id: 4 }), opts);
     assert.deepEqual(message, { message_id: 9 });
-    assert.equal(tg.calls[1].media.filename, 'danbooru_4.jpg');
+    assert.match(tg.calls[0].media, /original/);
+    assert.match(tg.calls[1].media, /sample/);
+    assert.equal(tg.calls[2].media.filename, 'danbooru_4.jpg');
     assert.equal(fetchMock.calls[0].init.headers['User-Agent'], 'ua');
     fetchMock.restore();
 
@@ -89,10 +91,17 @@ test('sendAlbum: полная подпись у первой, короткие �
 
 test('sendAlbum: если ссылки не прошли — загружает файлы; 429 пробрасывает', async () => {
     fetchMock = mockFetch(async () => new Response(new Uint8Array([1])));
-    const tg = fakeTelegram({ sendMediaGroup: (media, n) => { if (n === 1) throw new Error('bad'); return media.map(() => ({ message_id: 5 })); } });
+    const tg = fakeTelegram({ sendMediaGroup: (media) => { if (typeof media[0].media === 'string') throw new Error('bad'); return media.map(() => ({ message_id: 5 })); } });
     const sent = await sendAlbum(tg, 1, [makePost(), makePost()], opts);
     assert.equal(sent.length, 2);
-    assert.ok(tg.calls[1].media[0].media.source);
+    assert.match(tg.calls[0].media[0].media, /original/);
+    assert.match(tg.calls[1].media[0].media, /sample/);
+    assert.ok(tg.calls[2].media[0].media.source);
+
+    // Оригиналы не прошли, копии — да
+    const second = fakeTelegram({ sendMediaGroup: (media, n) => { if (n === 1) throw new Error('bad'); return media.map(() => ({ message_id: 6 })); } });
+    assert.equal((await sendAlbum(second, 1, [makePost(), makePost()], opts)).length, 2);
+    assert.equal(second.calls.length, 2);
 
     const rateLimit = Object.assign(new Error('429'), { response: { error_code: 429 } });
     const limited = fakeTelegram({ sendMediaGroup: () => { throw rateLimit; } });

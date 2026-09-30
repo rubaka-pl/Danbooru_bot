@@ -20,9 +20,11 @@ export default async function handler(req, res) {
 
     try {
         const result = await autopostOnce({ ...app, telegram: bot.telegram });
+        await app.alerts.success('autopost', { label: 'Автопост' });
         res.status(200).json({ ok: true, result });
     } catch (error) {
         console.error('❌ Автопост:', error);
+        await app.alerts.failure('autopost', error, { label: 'Автопост' });
         res.status(500).json({ ok: false, error: error.message });
     }
 }

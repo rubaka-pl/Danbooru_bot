@@ -69,7 +69,7 @@ export async function deliverForChat({ telegram, client, config, userData }, cha
             ? await sendAlbum(telegram, chatId, best, { client, userAgent, header })
             : [];
         if (!album.length) {
-            await sendPost(telegram, chatId, best[0], { client, userAgent, header, extra: postKeyboard(best[0]) });
+            await sendPost(telegram, chatId, best[0], { client, userAgent, header, extra: postKeyboard(best[0], client.baseUrl) });
         }
         delivered++;
     }
@@ -114,9 +114,18 @@ export async function runDigestIfDue(deps, { now = new Date(), force = false } =
 
 /** Проверка раз в 10 минут — для постоянно работающего сервера (рассылка + «Топ недели»). */
 export function startDigestLoop(deps) {
+    const guarded = async (key, label, fn) => {
+        try {
+            await fn(deps);
+            await deps.alerts?.success(key, { label });
+        } catch (error) {
+            console.error(`❌ ${label}:`, error.message);
+            await deps.alerts?.failure(key, error, { label });
+        }
+    };
     const tick = async () => {
-        await runDigestIfDue(deps).catch(error => console.error('❌ Рассылка:', error.message));
-        await runRecapIfDue(deps).catch(error => console.error('❌ Топ недели:', error.message));
+        await guarded('digest', 'Рассылка подписок', runDigestIfDue);
+        await guarded('recap', 'Топ недели', runRecapIfDue);
     };
     const timer = setInterval(tick, 10 * 60 * 1000);
     setTimeout(tick, 30 * 1000);

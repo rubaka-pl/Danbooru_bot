@@ -41,14 +41,30 @@ export function parseGroupsFromMessage(text = '') {
         }).filter(tag => tag.name));
 }
 
-export function searchKeyboard(rating, counts) {
+export function searchKeyboard(rating, counts, { subscribe = false } = {}) {
     const ratingRow = Object.keys(RATINGS).map(key =>
         Markup.button.callback(`${key === rating ? '✅ ' : ''}${RATINGS[key].label}`, `r:${key}`)
     );
     const countRow = counts.map(n => Markup.button.callback(`📥 ${n}`, `s:${rating}:${n}`));
-    return Markup.inlineKeyboard([ratingRow.slice(0, 2), ratingRow.slice(2), countRow]);
+    const rows = [ratingRow.slice(0, 2), ratingRow.slice(2), countRow];
+    if (subscribe) rows.push([Markup.button.callback('🔔 Подписаться на новые', `sub:${rating}`)]);
+    return Markup.inlineKeyboard(rows);
 }
 
 export function describeRating(rating) {
     return `Рейтинг: ${ratingLabel(rating)}`;
+}
+
+/** Кнопки под картинкой. */
+export function postKeyboard(post) {
+    const hasArtist = Boolean(post.tag_string_artist?.trim());
+    const hasCharacter = Boolean(post.tag_string_character?.trim());
+    const row2 = [
+        hasArtist && Markup.button.callback('🎨 Ещё автора', `art:${post.id}`),
+        hasCharacter && Markup.button.callback('👤 Ещё персонажа', `chr:${post.id}`)
+    ].filter(Boolean);
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('❤️', `f:${post.id}`), Markup.button.callback('🔍 Похожие', `sim:${post.id}`)],
+        ...(row2.length ? [row2] : [])
+    ]);
 }

@@ -1,102 +1,13 @@
-import { findPosts } from '../../services/postSearch.js';
-import { sendPost } from '../../services/sender.js';
 import { parseUserInput } from '../../utils/query.js';
 import { DEFAULT_RATING, RATINGS, RATING_KEYWORDS, isNsfwTag, ratingLabel } from '../../utils/ratings.js';
 import { escapeHtml } from '../../utils/format.js';
 import { describeRating, formatGroupLine, parseGroupsFromMessage, searchKeyboard } from '../request.js';
-import { seenFor, tryLock, unlock } from '../chatState.js';
-
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-const groupTitle = (tags) => tags.map(t => `${t.negated ? '-' : ''}${t.name}`).join(' + ') || 'случайное';
-
-/** Повторяет вызов Telegram, если он попросил подождать (429). */
-async function withTelegramRetry(fn) {
-    try {
-        return await fn();
-    } catch (error) {
-        const retryAfter = error?.response?.parameters?.retry_after;
-        if (error?.response?.error_code !== 429 || !retryAfter) throw error;
-        await sleep((retryAfter + 1) * 1000);
-        return fn();
-    }
-}
+import { BUSY_TEXT } from '../searchRunner.js';
 
 export function registerSearchHandlers(bot, deps) {
-    const { client, resolver, config, runTask } = deps;
-    const { counts, sendDelayMs, maxGroups, maxTermsPerGroup } = config.search;
-    const tagLimit = config.danbooru.tagLimit;
-
-    /**
-     * Ищет и отправляет картинки. Работает в фоне, чтобы не упираться в таймаут обработчика.
-     */
-    async function runSearch(telegram, chatId, groups, rating, count, { finalKeyboard = true } = {}) {
-        const seen = seenFor(chatId);
-        const progress = await telegram.sendMessage(chatId, `🔍 Ищу… (${ratingLabel(rating)})`);
-
-        try {
-            for (const tags of groups) {
-                const title = groupTitle(tags);
-                const posts = await findPosts(client, {
-                    tags,
-                    rating,
-                    count,
-                    tagLimit,
-                    skip: (post) => seen.has(post.md5)
-                });
-
-                let sent = 0;
-                for (const post of posts) {
-                    if (sent >= count) break;
-                    const ok = await withTelegramRetry(() => sendPost(telegram, chatId, post, {
-                        client,
-                        userAgent: config.danbooru.userAgent,
-                        query: groups.length > 1 ? title.replace(/_/g, ' ') : undefined
-                    }));
-                    if (!ok) continue;
-                    seen.add(post.md5);
-                    sent++;
-                    await sleep(sendDelayMs);
-                }
-
-                if (sent === 0) {
-                    await telegram.sendMessage(chatId,
-                        `😔 По <code>${escapeHtml(title)}</code> ничего нового не нашлось (${ratingLabel(rating)}).\n` +
-                        'Попробуй другой рейтинг или убери часть тегов.',
-                        { parse_mode: 'HTML' });
-                } else if (sent < count) {
-                    await telegram.sendMessage(chatId,
-                        `ℹ️ По <code>${escapeHtml(title)}</code> нашлось только ${sent} из ${count}.`,
-                        { parse_mode: 'HTML' });
-                }
-            }
-        } catch (error) {
-            console.error('❌ Ошибка поиска:', error);
-            const text = error?.isRateLimit
-                ? '⏳ Danbooru просит подождать. Попробуй через минуту.'
-                : `⚠️ Ошибка при поиске: ${error.message}`;
-            await telegram.sendMessage(chatId, text).catch(() => {});
-        } finally {
-            await telegram.deleteMessage(chatId, progress.message_id).catch(() => {});
-        }
-
-        if (finalKeyboard && groups.some(tags => tags.length)) {
-            await telegram.sendMessage(chatId,
-                ['✅ Готово! Хочешь ещё?', ...groups.map(formatGroupLine), describeRating(rating)].join('\n'),
-                { parse_mode: 'HTML', ...searchKeyboard(rating, counts) });
-        }
-    }
-
-    function startSearch(ctx, groups, rating, count, options) {
-        const chatId = ctx.chat.id;
-        if (!tryLock(chatId)) return false;
-        runTask(
-            runSearch(ctx.telegram, chatId, groups, rating, count, options)
-                .catch(error => console.error('❌ Поиск упал:', error))
-                .finally(() => unlock(chatId))
-        );
-        return true;
-    }
+    const { client, config, runner } = deps;
+    const { counts } = config.search;
+    const { startSearch, startTask, sendResults, skipFor } = runner;
 
     // Переключение рейтинга
     bot.action(/^r:(\w+)$/, async (ctx) => {
@@ -113,8 +24,11 @@ export function registerSearchHandlers(bot, deps) {
             .map(line => line.startsWith('🔹') ? formatGroupLine(groups.shift() ?? []) : escapeHtml(line))
             .join('\n');
 
-        await ctx.editMessageText(html, { parse_mode: 'HTML', ...searchKeyboard(rating, counts) })
-            .catch(() => ctx.editMessageReplyMarkup(searchKeyboard(rating, counts).reply_markup).catch(() => {}));
+        // Кнопка «Подписаться» есть только под итоговым сообщением — сохраняем её
+        const subscribe = JSON.stringify(ctx.callbackQuery.message?.reply_markup ?? {}).includes('"sub:');
+        const keyboard = searchKeyboard(rating, counts, { subscribe });
+        await ctx.editMessageText(html, { parse_mode: 'HTML', ...keyboard })
+            .catch(() => ctx.editMessageReplyMarkup(keyboard.reply_markup).catch(() => {}));
     });
 
     // Запуск поиска
@@ -127,7 +41,7 @@ export function registerSearchHandlers(bot, deps) {
             return ctx.answerCbQuery('Запрос устарел — напиши его заново', { show_alert: true });
         }
         if (!startSearch(ctx, groups, rating, count)) {
-            return ctx.answerCbQuery('⏳ Подожди, ещё отправляю предыдущие картинки');
+            return ctx.answerCbQuery(BUSY_TEXT);
         }
         await ctx.answerCbQuery(`🔍 Ищу ${count} шт.`);
     });
@@ -137,7 +51,7 @@ export function registerSearchHandlers(bot, deps) {
         const arg = ctx.payload?.trim().toLowerCase();
         const rating = RATING_KEYWORDS[arg] ?? DEFAULT_RATING;
         if (!startSearch(ctx, [[{ name: 'score:>20', meta: true, postCount: 0 }]], rating, 1, { finalKeyboard: false })) {
-            return ctx.reply('⏳ Подожди, ещё отправляю предыдущие картинки');
+            return ctx.reply(BUSY_TEXT);
         }
     });
 
@@ -146,39 +60,28 @@ export function registerSearchHandlers(bot, deps) {
         const args = (ctx.payload || '').toLowerCase().split(/\s+/).filter(Boolean);
         const scale = args.includes('month') ? 'month' : args.includes('week') ? 'week' : 'day';
         const rating = args.map(a => RATING_KEYWORDS[a]).find(Boolean) ?? DEFAULT_RATING;
-        const chatId = ctx.chat.id;
-        if (!tryLock(chatId)) return ctx.reply('⏳ Подожди, ещё отправляю предыдущие картинки');
+        const code = RATINGS[rating].code;
 
-        runTask((async () => {
-            try {
-                const code = RATINGS[rating].code;
-                const seen = seenFor(chatId);
-                const posts = (await client.popular({ scale }))
-                    .filter(p => !code || p.rating === code)
-                    .filter(p => !seen.has(p.md5));
-                let sent = 0;
-                for (const post of posts) {
-                    if (sent >= 5) break;
-                    const ok = await withTelegramRetry(() => sendPost(ctx.telegram, chatId, post, {
-                        client, userAgent: config.danbooru.userAgent
-                    }));
-                    if (!ok) continue;
-                    seen.add(post.md5);
-                    sent++;
-                    await sleep(sendDelayMs);
-                }
-                if (!sent) await ctx.reply('😔 Ничего нового в топе с таким рейтингом.');
-            } catch (error) {
-                console.error('❌ /top:', error);
-                await ctx.reply(`⚠️ Ошибка: ${error.message}`).catch(() => {});
-            } finally {
-                unlock(chatId);
-            }
-        })());
+        const started = startTask(ctx, async () => {
+            const skip = await skipFor(ctx.chat.id);
+            const posts = (await client.popular({ scale }))
+                .filter(p => !code || p.rating === code)
+                .filter(p => !skip(p));
+            const sent = await sendResults(ctx.telegram, ctx.chat.id, posts, 5);
+            if (!sent) await ctx.reply('😔 Ничего нового в топе с таким рейтингом.');
+        });
+        if (!started) return ctx.reply(BUSY_TEXT);
     });
+}
 
-    // Текст от пользователя → разбор → подтверждение с кнопками.
-    // Регистрируется последним, чтобы не перехватывать команды.
+/**
+ * Текст от пользователя → разбор → подтверждение с кнопками.
+ * Регистрируется последним, чтобы не перехватывать команды и другие обработчики.
+ */
+export function registerTextSearch(bot, deps) {
+    const { resolver, config } = deps;
+    const { counts, maxGroups, maxTermsPerGroup } = config.search;
+
     bot.on('text', async (ctx, next) => {
         if (ctx.chat.type !== 'private') return next();
         const text = ctx.message.text.trim();

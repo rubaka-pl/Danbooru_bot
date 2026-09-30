@@ -43,8 +43,19 @@ function namedLine(icon, title, tags, max) {
  * Подпись к картинке. Гарантированно укладывается в лимит Telegram (1024 символа).
  * Разметка — HTML.
  */
-export function buildCaption(post, { postUrl, query, maxGeneralTags = 25 } = {}) {
+export function buildCaption(post, { postUrl, query, header, compact = false, maxGeneralTags = 25 } = {}) {
+    if (compact) {
+        // Короткая подпись для картинок внутри альбома
+        const artist = splitTags(post.tag_string_artist)[0];
+        const character = splitTags(post.tag_string_character)[0];
+        const parts = [character && escapeHtml(humanizeTag(character)), artist && `🎨 ${escapeHtml(humanizeTag(artist))}`]
+            .filter(Boolean).join(' · ');
+        const link = postUrl ? `<a href="${escapeHtml(postUrl)}">🔗</a>` : '';
+        return [parts, link].filter(Boolean).join(' ');
+    }
+
     const lines = [
+        header,
         query && `🔎 Запрос: ${escapeHtml(query)}`,
         namedLine('🎨', 'Автор', splitTags(post.tag_string_artist), 3),
         namedLine('👤', 'Персонаж', splitTags(post.tag_string_character), 4),

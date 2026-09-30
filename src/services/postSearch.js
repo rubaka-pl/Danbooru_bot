@@ -11,13 +11,32 @@ import { buildQuery, matchesClientFilter, pickMedia } from '../utils/posts.js';
  * @param {number} options.count — сколько постов нужно
  * @param {(post) => boolean} [options.skip] — пропустить пост (например, уже отправленный)
  * @param {number} options.tagLimit
+ * @param {boolean} [options.random=true] — false: сначала новые
+ * @param {number} [options.page]
+ * @param {number} [options.limit] — сколько постов запросить у API
  */
-export async function findPosts(client, { tags, rating, count, skip = () => false, tagLimit = 2 }) {
+export async function findPosts(client, options) {
+    const { tags, count, random = true } = options;
+    const posts = await fetchFiltered(client, options, random);
+
+    // В случайном режиме один слот лимита занимает random:, поэтому часть тегов
+    // проверяется на стороне бота. Если нашлось мало — добиваем свежими постами,
+    // где на сервер уходит на один тег больше.
+    const includes = tags.filter(t => !t.meta && !t.negated).length;
+    if (random && posts.length < count && includes >= 2) {
+        const extra = await fetchFiltered(client, options, false).catch(() => []);
+        const seen = new Set(posts.map(p => p.id));
+        posts.push(...extra.filter(p => !seen.has(p.id)));
+    }
+    return posts;
+}
+
+async function fetchFiltered(client, { tags, rating, count, skip = () => false, tagLimit = 2, page, limit: fetchLimit }, random) {
     let limit = tagLimit;
     let ratingOnServer = true;
 
     for (let attempt = 0; attempt < 4; attempt++) {
-        const query = buildQuery(tags, rating, limit);
+        const query = buildQuery(tags, rating, limit, { random });
         const serverTags = [...query.serverTags];
         if (ratingOnServer && query.ratingCode) serverTags.push(`rating:${query.ratingCode}`);
 
@@ -28,8 +47,9 @@ export async function findPosts(client, { tags, rating, count, skip = () => fals
         try {
             posts = await client.posts({
                 tags: serverTags,
-                limit: filtered ? 200 : Math.min(count * 4 + 10, 100),
-                random: true
+                limit: fetchLimit ?? (filtered ? 200 : Math.min(count * 4 + 10, 100)),
+                random,
+                page
             });
         } catch (error) {
             if (!error?.isTagLimit) throw error;

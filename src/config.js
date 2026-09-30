@@ -37,6 +37,11 @@ export const config = {
         maxBackoffMs: 10 * 60 * 1000,
         tags: ['score:>50', 'date:>=2017-01-01'],
         sensitiveEvery: 5, // каждый N-й пост — rating:sensitive
+        // Примерно каждый N-й автопост — альбом из 5–10 картинок (0 — без альбомов)
+        albumEvery: toInt(env.ALBUM_EVERY, 8),
+        albumSize: [5, 10],
+        // Доля постов, подобранных по статистике реакций в канале (0..1)
+        adaptiveShare: Number.parseFloat(env.ADAPTIVE_SHARE ?? '0.4'),
         historyFile: path.resolve(env.HISTORY_FILE || './data/sent_images.json'),
         historyLimit: 5000,
         // В это время автопост в канал не публикует новые картинки.
@@ -46,6 +51,18 @@ export const config = {
         // Секрет для /api/autopost (Vercel / внешний cron)
         cronSecret: env.CRON_SECRET || ''
     },
+
+    subscriptions: {
+        hour: toInt(env.DIGEST_HOUR, 12), // рассылка по подпискам — каждый день после этого часа
+        timeZone: env.TZ_NAME || 'Europe/Warsaw',
+        perSub: 5
+    },
+
+    // Кому доступна /stats (id через запятую). Пусто — всем.
+    adminIds: (env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean).map(Number),
+
+    // Файл с данными пользователей (избранное, подписки, блок-лист, статистика) для режима polling
+    storeFile: path.resolve(env.STORE_FILE || './data/store.json'),
 
     // Webhook-режим (Vercel). Секрет проверяется в заголовке от Telegram.
     webhookSecret: env.WEBHOOK_SECRET || '',

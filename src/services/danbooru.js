@@ -16,11 +16,19 @@ export class DanbooruError extends Error {
     }
 }
 
+/** Ответ IQDB → [{ post, score }] */
+function normalizeIqdb(body) {
+    if (!Array.isArray(body)) return [];
+    return body
+        .map(item => ({ post: item.post ?? null, postId: item.post_id ?? item.post?.id, score: Number(item.score ?? item.similarity ?? 0) }))
+        .filter(item => item.postId);
+}
+
 /**
  * Тонкая обёртка над JSON API Danbooru.
  */
 export function createDanbooruClient({ baseUrl, login, apiKey, timeout = 15000, userAgent, fetchImpl = fetch }) {
-    async function request(pathname, params = {}) {
+    async function request(pathname, params = {}, { method = 'GET', body: requestBody } = {}) {
         const url = new URL(pathname, baseUrl);
         for (const [key, value] of Object.entries(params)) {
             if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
@@ -33,6 +41,8 @@ export function createDanbooruClient({ baseUrl, login, apiKey, timeout = 15000, 
         let res;
         try {
             res = await fetchImpl(url, {
+                method,
+                body: requestBody,
                 headers: { 'User-Agent': userAgent, Accept: 'application/json' },
                 signal: AbortSignal.timeout(timeout)
             });
@@ -56,6 +66,37 @@ export function createDanbooruClient({ baseUrl, login, apiKey, timeout = 15000, 
     return {
         baseUrl,
 
+        async post(id) {
+            return request(`/posts/${Number(id)}.json`);
+        },
+
+        /** Посты по списку id (порядок не гарантирован). */
+        async postsByIds(ids) {
+            if (!ids.length) return [];
+            const body = await request('/posts.json', { tags: `id:${ids.map(Number).join(',')}`, limit: ids.length });
+            return Array.isArray(body) ? body : [];
+        },
+
+        /** Похожие картинки (IQDB) по id поста. */
+        async similarToPost(postId, limit = 10) {
+            const body = await request('/iqdb_queries.json', {
+                'search[post_id]': Number(postId),
+                'search[limit]': limit,
+                post_id: Number(postId),
+                limit
+            });
+            return normalizeIqdb(body);
+        },
+
+        /** Поиск по картинке (IQDB) — загрузка файла. */
+        async similarToFile(buffer, filename = 'image.jpg', limit = 10) {
+            const form = new FormData();
+            form.append('search[file]', new Blob([buffer]), filename);
+            form.append('search[limit]', String(limit));
+            const body = await request('/iqdb_queries.json', {}, { method: 'POST', body: form });
+            return normalizeIqdb(body);
+        },
+
         async posts({ tags = [], limit = 20, random = false, page } = {}) {
             const body = await request('/posts.json', {
                 tags: tags.join(' '),
@@ -68,8 +109,8 @@ export function createDanbooruClient({ baseUrl, login, apiKey, timeout = 15000, 
         },
 
         // Популярное за день/неделю/месяц
-        async popular({ scale = 'day', date } = {}) {
-            const body = await request('/explore/posts/popular.json', { scale, date });
+        async popular({ scale = 'day', date, limit = 100 } = {}) {
+            const body = await request('/explore/posts/popular.json', { scale, date, limit });
             if (!Array.isArray(body)) throw new DanbooruError('Некорректный ответ API', 200, body);
             return body;
         },

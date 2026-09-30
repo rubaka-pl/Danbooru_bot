@@ -33,10 +33,28 @@ export function pickMedia(post, baseUrl) {
 }
 
 /**
+ * Метатеги, которые Danbooru не считает в лимит тегов
+ * (UNLIMITED_METATAGS в app/logical/post_query.rb).
+ */
+export const FREE_METATAGS = new Set([
+    'status', 'rating', 'limit', 'is', 'id', 'date', 'age', 'filesize', 'filetype', 'parent', 'child',
+    'md5', 'width', 'height', 'duration', 'mpixels', 'ratio', 'score', 'upvote', 'downvotes',
+    'favcount', 'embedded', 'tagcount', 'pixiv_id', 'pixiv'
+]);
+
+export function isFreeMetatag(name) {
+    return FREE_METATAGS.has(name.split(':')[0]);
+}
+
+/**
  * Делит теги на те, что уйдут в запрос к Danbooru (с учётом лимита),
  * и те, что бот проверит сам.
+ *
+ * @param {number} tagLimit — сколько «платных» тегов разрешено
+ * @param {object} [options]
+ * @param {boolean} [options.random] — random=true превращается в метатег random:N, он тоже занимает слот
  */
-export function buildQuery(tags, rating, tagLimit) {
+export function buildQuery(tags, rating, tagLimit, { random = false } = {}) {
     const metas = tags.filter(t => t.meta);
     // Самые редкие теги отправляем на сервер — так выборка получается точнее.
     const includes = tags.filter(t => !t.meta && !t.negated).sort((a, b) => a.postCount - b.postCount);
@@ -45,15 +63,27 @@ export function buildQuery(tags, rating, tagLimit) {
     const serverTags = [];
     const clientInclude = [];
     const clientExclude = [];
+    let used = random ? 1 : 0;
 
-    for (const meta of metas) serverTags.push(`${meta.negated ? '-' : ''}${meta.name}`);
+    for (const meta of metas) {
+        serverTags.push(`${meta.negated ? '-' : ''}${meta.name}`);
+        if (!isFreeMetatag(meta.name)) used++;
+    }
     for (const tag of includes) {
-        if (serverTags.length < tagLimit) serverTags.push(tag.name);
-        else clientInclude.push(tag.name);
+        if (used < tagLimit) {
+            serverTags.push(tag.name);
+            used++;
+        } else {
+            clientInclude.push(tag.name);
+        }
     }
     for (const tag of excludes) {
-        if (serverTags.length < tagLimit) serverTags.push(`-${tag.name}`);
-        else clientExclude.push(tag.name);
+        if (used < tagLimit) {
+            serverTags.push(`-${tag.name}`);
+            used++;
+        } else {
+            clientExclude.push(tag.name);
+        }
     }
 
     const ratingCode = RATINGS[rating]?.code ?? null;

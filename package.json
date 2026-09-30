@@ -11,7 +11,8 @@
     "start": "node src/index.js",
     "test": "node --test",
     "webhook:set": "node scripts/setWebhook.js",
-    "webhook:delete": "node scripts/setWebhook.js --delete"
+    "webhook:delete": "node scripts/setWebhook.js --delete",
+    "test:coverage": "node --test --experimental-test-coverage"
   },
   "license": "ISC",
   "dependencies": {

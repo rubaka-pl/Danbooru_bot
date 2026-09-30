@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createRedis } from './redis.js';
 
 /**
  * История отправленных в канал картинок (md5) в JSON-файле.
@@ -57,25 +58,12 @@ export class FileHistory {
  */
 export class RedisHistory {
     constructor({ url, token, prefix = 'danbooru:sent:', ttlDays = 90 }) {
-        this.url = url.replace(/\/$/, '');
-        this.token = token;
+        this.command = createRedis({ url, token });
         this.prefix = prefix;
         this.ttl = ttlDays * 24 * 60 * 60;
     }
 
     async load() {}
-
-    async command(...args) {
-        const res = await fetch(this.url, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(args),
-            signal: AbortSignal.timeout(5000)
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok || body.error) throw new Error(body.error || `Redis HTTP ${res.status}`);
-        return body.result;
-    }
 
     async has(md5) {
         try {

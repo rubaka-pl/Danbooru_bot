@@ -1,13 +1,15 @@
 // Запуск в режиме постоянного сервера (Render, VPS, локально): long polling + автопост по таймеру.
 import http from 'node:http';
-import { createApp } from './app.js';
+import { ALLOWED_UPDATES, createApp } from './app.js';
 import { startAutopostLoop } from './services/autopost.js';
+import { startDigestLoop } from './services/subscriptions.js';
 import { COMMANDS } from './bot/handlers/start.js';
 
 const app = createApp();
-const { bot, config, history } = app;
+const { bot, config, history, store } = app;
 
 await history.load();
+await store.load();
 
 // Render требует открытый порт — простой health-check
 const server = http.createServer((req, res) => {
@@ -21,7 +23,9 @@ if (config.autopost.enabled && config.autopost.channelId) {
     stopAutopost = startAutopostLoop({ ...app, telegram: bot.telegram });
 }
 
-bot.launch({ dropPendingUpdates: true }, () => {
+const stopDigest = startDigestLoop({ ...app, telegram: bot.telegram });
+
+bot.launch({ dropPendingUpdates: true, allowedUpdates: ALLOWED_UPDATES }, () => {
     console.log(`🟢 Бот @${bot.botInfo?.username} запущен`);
     bot.telegram.setMyCommands(COMMANDS).catch(error => console.warn('⚠️ setMyCommands:', error.message));
 }).catch(error => {
@@ -32,9 +36,11 @@ bot.launch({ dropPendingUpdates: true }, () => {
 const shutdown = async (signal) => {
     console.log(`🛑 ${signal}: останавливаюсь…`);
     stopAutopost();
+    stopDigest();
     bot.stop(signal);
     server.close();
     if (history.save) await history.save();
+    if (store.save) await store.save();
     process.exit(0);
 };
 process.once('SIGINT', () => shutdown('SIGINT'));

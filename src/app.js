@@ -2,6 +2,10 @@ import { config } from './config.js';
 import { createDanbooruClient } from './services/danbooru.js';
 import { createTagResolver } from './services/tagResolver.js';
 import { FileHistory, MemoryHistory, RedisHistory } from './services/history.js';
+import { FileStore, MemoryStore, RedisStore } from './services/store.js';
+import { createUserData } from './services/userData.js';
+import { createChannelStats } from './services/channelStats.js';
+import { createSearchRunner } from './bot/searchRunner.js';
 import { createBot } from './bot/createBot.js';
 
 /**
@@ -17,19 +21,31 @@ export function createApp({ serverless = false, runTask = (p) => p.catch(console
 
     const client = createDanbooruClient(config.danbooru);
     const resolver = createTagResolver(client);
+    const hasRedis = Boolean(config.redis.url && config.redis.token);
 
     let history;
-    if (config.redis.url && config.redis.token) {
+    let store;
+    if (hasRedis) {
         history = new RedisHistory(config.redis);
+        store = new RedisStore(config.redis);
     } else if (serverless) {
-        console.warn('⚠️ Redis не настроен — история автопоста не сохраняется между запусками');
+        console.warn('⚠️ Redis не настроен — избранное, подписки и история не сохраняются между запусками');
         history = new MemoryHistory(config.autopost.historyLimit);
+        store = new MemoryStore();
     } else {
         history = new FileHistory(config.autopost.historyFile, config.autopost.historyLimit);
+        store = new FileStore(config.storeFile);
     }
 
-    const deps = { config, client, resolver, history, runTask };
+    const userData = createUserData(store);
+    const channelStats = createChannelStats(store);
+    const runner = createSearchRunner({ client, config, userData, runTask });
+
+    const deps = { config, client, resolver, history, store, userData, channelStats, runner, runTask };
     const bot = createBot(deps);
 
     return { ...deps, bot };
 }
+
+/** Какие апдейты нужны боту (message_reaction_count сам по себе не приходит). */
+export const ALLOWED_UPDATES = ['message', 'callback_query', 'inline_query', 'message_reaction_count'];

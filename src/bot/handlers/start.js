@@ -17,9 +17,19 @@ const HELP = [
     'Порядок слов неважен: <code>naruto uzumaki</code> = <code>uzumaki_naruto</code>.',
     'После запроса выбери рейтинг и сколько картинок прислать.',
     '',
+    '📷 <b>Пришли картинку</b> — найду источник, автора и теги.',
+    '🔘 Под каждой картинкой: ❤️ в избранное, 🔍 похожие, 🎨 ещё автора, 👤 ещё персонажа.',
+    '💬 <b>В любом чате</b>: напиши <code>@бот miku</code> — выдам сетку картинок.',
+    '',
     '<b>Команды:</b>',
     '/random — случайная картинка (<code>/random nsfw</code>)',
     '/top — популярное за день (<code>/top week</code>, <code>/top month nsfw</code>)',
+    '/favs — избранное',
+    '/sub — подписка на новые арты раз в день (<code>/sub hatsune miku</code>)',
+    '/subs — мои подписки',
+    '/block — никогда не показывать тег (<code>/block yaoi, guro</code>)',
+    '/blocklist — мой блок-лист',
+    '/stats — что заходит в канале',
     '/tags — список 18+ тегов',
     '/help — эта справка'
 ].join('\n');
@@ -50,5 +60,11 @@ export const COMMANDS = [
     { command: 'help', description: 'Как искать' },
     { command: 'random', description: 'Случайная картинка' },
     { command: 'top', description: 'Популярное за день' },
+    { command: 'favs', description: 'Избранное' },
+    { command: 'sub', description: 'Подписаться на тег' },
+    { command: 'subs', description: 'Мои подписки' },
+    { command: 'block', description: 'Скрывать тег' },
+    { command: 'blocklist', description: 'Блок-лист' },
+    { command: 'stats', description: 'Статистика канала' },
     { command: 'tags', description: 'Список 18+ тегов' }
 ];

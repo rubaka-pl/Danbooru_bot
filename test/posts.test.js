@@ -58,3 +58,64 @@ test('findPosts при ошибке лимита тегов переносит �
     assert.deepEqual(posts.map(p => p.id), [1]);
     assert.deepEqual(calls.at(-1), ['miku']);
 });
+
+test('buildQuery: random занимает слот, бесплатные метатеги — нет', () => {
+    const tags = [
+        { name: 'score:>50', meta: true, postCount: 0 },
+        { name: 'order:rank', meta: true, postCount: 0 },
+        { name: 'a', postCount: 1 },
+        { name: 'b', postCount: 2 }
+    ];
+    const q = buildQuery(tags, 'any', 3, { random: true });
+    assert.deepEqual(q.serverTags, ['score:>50', 'order:rank', 'a']);
+    assert.deepEqual(q.clientInclude, ['b']);
+    assert.equal(q.ratingCode, null);
+});
+
+test('findPosts: в random-режиме добивает свежими постами с полным набором тегов', async () => {
+    const calls = [];
+    const client = {
+        baseUrl: base,
+        async posts(params) {
+            calls.push(params);
+            return params.random
+                ? [{ id: 1, md5: 'a', rating: 'g', file_ext: 'jpg', file_url: 'u', tag_string: 'x y' }]
+                : [
+                    { id: 1, md5: 'a', rating: 'g', file_ext: 'jpg', file_url: 'u', tag_string: 'x y' },
+                    { id: 2, md5: 'b', rating: 'g', file_ext: 'jpg', file_url: 'u', tag_string: 'x y' }
+                ];
+        }
+    };
+    const posts = await findPosts(client, {
+        tags: [{ name: 'x', postCount: 1 }, { name: 'y', postCount: 2 }],
+        rating: 'general', count: 3, tagLimit: 2
+    });
+    assert.deepEqual(posts.map(p => p.id), [1, 2]);
+    assert.deepEqual(calls.map(c => [c.random, c.tags]), [[true, ['x', 'rating:g']], [false, ['x', 'y', 'rating:g']]]);
+});
+
+test('findPosts: удалённые и забаненные отбрасываются, другие ошибки пробрасываются', async () => {
+    const client = {
+        baseUrl: base,
+        posts: async () => [
+            { id: 1, md5: 'a', rating: 'g', file_ext: 'jpg', file_url: 'u', is_deleted: true },
+            { id: 2, md5: 'b', rating: 'g', file_ext: 'jpg', file_url: 'u', is_banned: true },
+            { id: 3, md5: 'c', rating: 'g', file_ext: 'jpg', file_url: 'u' }
+        ]
+    };
+    const posts = await findPosts(client, { tags: [], rating: 'general', count: 1, skip: (p) => p.id === 99 });
+    assert.deepEqual(posts.map(p => p.id), [3]);
+
+    const failing = { baseUrl: base, posts: async () => { throw new Error('boom'); } };
+    await assert.rejects(findPosts(failing, { tags: [], rating: 'general', count: 1 }), /boom/);
+
+    const alwaysLimit = { baseUrl: base, posts: async () => { throw new DanbooruError('too many tags', 422); } };
+    await assert.rejects(findPosts(alwaysLimit, { tags: [{ name: 'a', postCount: 1 }], rating: 'general', count: 1, tagLimit: 3, random: false }), /too many tags/);
+});
+
+test('pickMedia: относительные ссылки, большие gif/mp4', () => {
+    assert.equal(pickMedia({ file_ext: 'jpg', file_url: '/data/a.jpg' }, base).url, `${base}/data/a.jpg`);
+    assert.equal(pickMedia({ file_ext: 'gif', file_url: 'https://x/a.gif', file_size: 30 * 1024 * 1024 }, base), null);
+    assert.equal(pickMedia({ file_ext: 'gif', file_size: 1 }, base), null);
+    assert.equal(pickMedia({ file_ext: 'mp4', file_size: 1 }, base), null);
+});

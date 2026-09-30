@@ -57,3 +57,8 @@ const NSFW_SET = new Set(NSFW_TAGS);
 export function isNsfwTag(tag) {
     return NSFW_SET.has(tag);
 }
+
+/** Рейтинг поста (g/s/q/e) → ключ RATINGS */
+export function ratingFromCode(code) {
+    return { g: 'general', s: 'sensitive', q: 'explicit', e: 'explicit' }[code] ?? DEFAULT_RATING;
+}

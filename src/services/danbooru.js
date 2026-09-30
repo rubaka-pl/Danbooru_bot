@@ -27,7 +27,9 @@ function normalizeIqdb(body) {
 /**
  * Тонкая обёртка над JSON API Danbooru.
  */
-export function createDanbooruClient({ baseUrl, login, apiKey, timeout = 15000, userAgent, fetchImpl = fetch }) {
+export function createDanbooruClient({ baseUrl, login, apiKey, timeout = 15000, userAgent, fetchImpl }) {
+    // Глобальный fetch берём в момент запроса (а не при создании) — так его можно подменить в тестах
+    const doFetch = fetchImpl ?? ((...args) => globalThis.fetch(...args));
     async function request(pathname, params = {}, { method = 'GET', body: requestBody } = {}) {
         const url = new URL(pathname, baseUrl);
         for (const [key, value] of Object.entries(params)) {
@@ -40,7 +42,7 @@ export function createDanbooruClient({ baseUrl, login, apiKey, timeout = 15000, 
 
         let res;
         try {
-            res = await fetchImpl(url, {
+            res = await doFetch(url, {
                 method,
                 body: requestBody,
                 headers: { 'User-Agent': userAgent, Accept: 'application/json' },

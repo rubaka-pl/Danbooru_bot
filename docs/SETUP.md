@@ -107,7 +107,7 @@ Blueprint сам включает **Health Check** на `/health`: если бо
 |---|---|
 | Раз в месяц | Открыть Pull Requests от Dependabot. Если галочка зелёная (тесты прошли) — **Merge**. |
 | Если пришло письмо «Danbooru API check failed» | Danbooru поменял API. Открой отчёт в Actions — там видно, что именно сломалось; обычно это правка одного места в `src/services/danbooru.js`. |
-| Раз в год | Проверить, что бесплатные тарифы Render/Upstash/cron-job.org не изменились. Обновить Node.js в `render.yaml` (`NODE_VERSION`) на актуальную LTS. |
+| Раз в год | Проверить, что бесплатные тарифы Render/Upstash/cron-job.org не изменились. Обновить Node.js в `render.yaml` (`NODE_VERSION`) и `.nvmrc` на актуальную LTS (сейчас 24, поддержка до 2028). |
 | Сменил токен бота | Обновить `BOT_TOKEN` на хостинге (и в секретах GitHub). На Vercel — ещё раз `npm run webhook:set`. |
 
 > Upstash Free — около 500 тыс. команд в месяц. На Render бот кэширует данные в памяти и пишет в Redis пачками, так что лимита хватает с запасом.

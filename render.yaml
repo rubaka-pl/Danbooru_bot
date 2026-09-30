@@ -11,7 +11,7 @@ services:
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        value: "24"
       - key: BOT_TOKEN
         sync: false
       - key: GROUP_ID

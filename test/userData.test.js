@@ -34,6 +34,18 @@ test('блок-лист: добавление без дублей, удален�
     assert.deepEqual(await blocklist.list(1), ['yaoi', 'x']);
 });
 
+test('блок-лист учитывает быстрые фильтры из настроек', async () => {
+    const { blocklist, settings } = createUserData(new MemoryStore());
+    assert.equal((await blocklist.matcher(1)).active, false);
+    await settings.update(1, { hide: ['yaoi', 'nope'] });
+    const match = await blocklist.matcher(1);
+    assert.equal(match.active, true);
+    assert.equal(match(makePost({ tag_string: 'male_focus solo' })), true);
+    assert.equal(match(makePost({ tag_string: '1girl' })), false);
+    await blocklist.add(1, ['guro']);
+    assert.equal((await blocklist.matcher(1))(makePost({ tag_string: 'guro' })), true);
+});
+
 test('подписки: добавление, дубли, лимит, удаление, индекс чатов', async () => {
     const { subscriptions } = createUserData(new MemoryStore());
     const sub = (tags) => ({ tags, rating: 'general', lastId: 0 });

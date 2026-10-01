@@ -39,7 +39,10 @@ export function createSearchRunner({ client, config, userData, runTask }) {
         const seen = seenFor(chatId);
         const blocked = await userData.blocklist.matcher(chatId);
         const { safe } = await userData.settings.get(chatId);
-        return (post) => seen.has(post.md5) || blocked(post) || (safe && isAdult(post));
+        const skip = (post) => seen.has(post.md5) || blocked(post) || (safe && isAdult(post));
+        // С фильтрами часть постов отсеется — берём у Danbooru побольше
+        skip.strict = blocked.active || safe;
+        return skip;
     }
 
     /** Отправляет посты по одному с кнопками. @returns число отправленных */
@@ -84,7 +87,7 @@ export function createSearchRunner({ client, config, userData, runTask }) {
         try {
             for (const tags of groups) {
                 const title = groupTitle(tags);
-                const posts = await findPosts(client, { tags, rating, count, tagLimit, skip });
+                const posts = await findPosts(client, { tags, rating, count, tagLimit, skip, limit: skip.strict ? 200 : undefined });
                 const sent = await sendResults(telegram, chatId, posts, count, {
                     query: groups.length > 1 ? title.replace(/_/g, ' ') : undefined,
                     header

@@ -26,13 +26,39 @@ test('/settings: показ и переключение всех настрое�
     await t.click('set:count:5');
     await t.click('set:quick');
     await t.click('set:safe');
-    assert.deepEqual(await t.userData.settings.get(42), { rating: 'sensitive', count: 5, quick: true, safe: true });
+    assert.deepEqual(await t.userData.settings.get(42), { rating: 'sensitive', count: 5, quick: true, safe: true, hide: [] });
     assert.match(tg.calls('editMessageText').at(-1).payload.text, /Безопасный режим.*✅ вкл/);
 
     tg.clear();
     await t.click('set:count:7'); // нет такого варианта
     await t.click('set:rating:bogus');
     assert.deepEqual(tg.methods(), ['answerCallbackQuery', 'answerCallbackQuery']);
+});
+
+test('/settings: быстрые фильтры «скрывать яой» и т.п.', async () => {
+    const t = createTestBot();
+    await t.click('set:hide:yaoi');
+    await t.click('set:hide:furry');
+    assert.deepEqual((await t.userData.settings.get(42)).hide, ['yaoi', 'furry']);
+    assert.match(tg.calls('editMessageText').at(-1).payload.text, /Скрывать: 👨‍❤️‍👨 яой \/ парни, 🐾 фурри/);
+    await t.click('set:hide:furry');
+    assert.deepEqual((await t.userData.settings.get(42)).hide, ['yaoi']);
+    tg.clear();
+    await t.click('set:hide:unknown');
+    assert.deepEqual(tg.methods(), ['answerCallbackQuery']);
+
+    // Поиск: яой отсеивается, у Danbooru берётся больше постов
+    const seen = [];
+    t.client.posts = async (params) => (seen.push(params), [
+        makePost({ tag_string: 'anal yaoi 2boys' }),
+        makePost({ tag_string: 'anal male_focus' }),
+        makePost({ tag_string: 'anal 1girl' })
+    ]);
+    tg.clear();
+    await t.click('s:explicit:3', { text: '🔹 anal' });
+    await t.settle();
+    assert.equal(tg.calls('sendPhoto').length, 1);
+    assert.equal(seen[0].limit, 200);
 });
 
 test('settingsView: отметка текущих значений', () => {

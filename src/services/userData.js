@@ -16,11 +16,21 @@ const QUIZ_KEY = 'quiz:scores';
 const historyKey = (chatId) => `u:${chatId}:history`;
 const MAX_HISTORY = 10;
 
+/** Быстрые фильтры в /settings: что скрывать (ключ → теги Danbooru). */
+export const HIDE_PRESETS = {
+    yaoi: { label: '👨‍❤️‍👨 яой / парни', tags: ['yaoi', 'male_focus'] },
+    yuri: { label: '👩‍❤️‍👩 юри', tags: ['yuri'] },
+    futa: { label: 'футанари', tags: ['futanari'] },
+    furry: { label: '🐾 фурри', tags: ['furry'] },
+    guro: { label: '🩸 гуро', tags: ['guro'] }
+};
+
 export const DEFAULT_SETTINGS = {
     rating: 'general', // рейтинг по умолчанию
     count: 3,          // сколько картинок в быстром режиме
     quick: false,      // быстрый режим: искать сразу, без подтверждения
-    safe: false        // безопасный режим: никогда не показывать 18+
+    safe: false,       // безопасный режим: никогда не показывать 18+
+    hide: []           // ключи HIDE_PRESETS
 };
 
 export function createUserData(store) {
@@ -64,14 +74,21 @@ export function createUserData(store) {
             return current.length - next.length;
         },
 
-        /** Функция-фильтр: true, если в посте есть заблокированный тег. */
+        /**
+         * Функция-фильтр: true, если в посте есть заблокированный тег
+         * (свой блок-лист + быстрые фильтры из /settings).
+         * Свойство `active` — включён ли хоть один фильтр.
+         */
         async matcher(chatId) {
-            const blocked = await list(blockKey(chatId));
-            if (!blocked.length) return () => false;
-            return (post) => {
+            const own = await list(blockKey(chatId));
+            const settings = (await store.get(settingsKey(chatId))) ?? {};
+            const presetTags = (settings.hide ?? []).flatMap(key => HIDE_PRESETS[key]?.tags ?? []);
+            const blocked = [...new Set([...own, ...presetTags])];
+            if (!blocked.length) return Object.assign(() => false, { active: false });
+            return Object.assign((post) => {
                 const tags = new Set((post.tag_string || '').split(' '));
                 return blocked.some(tag => tags.has(tag));
-            };
+            }, { active: true });
         }
     };
 

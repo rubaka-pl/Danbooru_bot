@@ -254,14 +254,17 @@ test('цикл подписок: ошибки идут в уведомления
     const failures = [];
     const store = new MemoryStore();
     store.get = async () => { throw new Error('store down'); };
+    const config = testConfig();
+    config.subscriptions.hour = 0;   // рассылка «положена» в любое время суток
+    config.recap.enabled = false;    // топ недели тут не проверяем
     const deps = {
-        store, userData: createUserData(store), config: testConfig(), client: fakeClient(),
+        store, userData: createUserData(store), config, client: fakeClient(),
         telegram: fakeTelegram(), channelStats: createChannelStats(store),
         alerts: { failure: async (key) => failures.push(key), success: async () => {} }
     };
     const stop = startDigestLoop(deps);
     t.mock.timers.tick(30_000);
     for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve));
-    assert.deepEqual(failures, ['digest']); // «Топ недели» в «не тот» день хранилище не трогает
+    assert.deepEqual(failures, ['digest']);
     stop();
 });

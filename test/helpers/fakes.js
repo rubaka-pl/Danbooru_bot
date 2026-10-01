@@ -111,6 +111,7 @@ export function testConfig(overrides = {}) {
     config.autopost.channelId = '@test_channel';
     config.autopost.quietHours = null;
     config.adminIds = [];
+    config.logUpdates = false;
     return Object.assign(config, overrides);
 }
 

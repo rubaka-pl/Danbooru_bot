@@ -54,6 +54,13 @@ test('переменные окружения', async () => {
     assert.deepEqual(config.redis, { url: 'https://kv', token: 'tok' });
 });
 
+test('keep-alive: адрес Render, свой адрес, выключение', async () => {
+    assert.equal((await loadConfig({ RENDER_EXTERNAL_URL: 'https://x.onrender.com' })).keepAliveUrl, 'https://x.onrender.com');
+    assert.equal((await loadConfig({ RENDER_EXTERNAL_URL: 'https://x', KEEP_ALIVE_URL: 'https://y' })).keepAliveUrl, 'https://y');
+    assert.equal((await loadConfig({ RENDER_EXTERNAL_URL: 'https://x', KEEP_ALIVE: 'off' })).keepAliveUrl, '');
+    assert.equal((await loadConfig({ LOG_UPDATES: 'off' })).logUpdates, false);
+});
+
 test('QUIET_HOURS=off и мусор в числах', async () => {
     const config = await loadConfig({ QUIET_HOURS: 'off', AUTOPOST_INTERVAL: 'abc' });
     assert.equal(config.autopost.quietHours, null);

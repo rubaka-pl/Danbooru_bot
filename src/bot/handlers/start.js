@@ -11,7 +11,7 @@ const HELP = [
     '• Исключить тег — минус: <code>miku, -male_focus</code>',
     '• Каждая строка — отдельный поиск (список персонажей через Enter)',
     '• Рейтинг прямо в запросе: <code>rem nsfw</code>, <code>miku safe</code>',
-    '• Метатеги Danbooru: <code>score:>100</code>, <code>order:score</code>',
+    '• Метатеги Danbooru: <code>score:&gt;100</code>, <code>order:score</code>',
     '• Можно просто вставить хэштеги из подписи: <code>#hatsune_miku #vocaloid</code>',
     '',
     'Порядок слов неважен: <code>naruto uzumaki</code> = <code>uzumaki_naruto</code>.',

@@ -4,6 +4,8 @@ import { startAutopostLoop } from './services/autopost.js';
 import { startDigestLoop } from './services/subscriptions.js';
 import { COMMANDS } from './bot/handlers/start.js';
 import { createHttpServer } from './server.js';
+import { launchPolling } from './bot/launch.js';
+import { startKeepAlive } from './services/keepAlive.js';
 
 const app = createApp();
 const { bot, config, history, store } = app;
@@ -33,10 +35,22 @@ if (config.autopost.enabled && config.autopost.channelId) {
 }
 
 const stopDigest = startDigestLoop({ ...app, telegram: bot.telegram });
+const stopKeepAlive = startKeepAlive({ url: config.keepAliveUrl });
 
-bot.launch({ dropPendingUpdates: true, allowedUpdates: ALLOWED_UPDATES }, () => {
-    console.log(`🟢 Бот @${bot.botInfo?.username} запущен`);
-    bot.telegram.setMyCommands(COMMANDS).catch(error => console.warn('⚠️ setMyCommands:', error.message));
+const storage = config.redis.url ? 'Upstash Redis' : `файл ${config.storeFile}`;
+console.log(`🗄 Хранилище: ${storage}`);
+if (!config.redis.url) {
+    console.warn('⚠️ Redis не подключён: на бесплатном Render избранное и подписки сотрутся при перезапуске (см. docs/SETUP.md)');
+}
+
+
+launchPolling(bot, {
+    allowedUpdates: ALLOWED_UPDATES,
+    alerts: app.alerts,
+    onLaunch: () => {
+        console.log(`🟢 Бот @${bot.botInfo?.username} запущен и ждёт сообщений`);
+        bot.telegram.setMyCommands(COMMANDS).catch(error => console.warn('⚠️ setMyCommands:', error.message));
+    }
 }).catch(error => {
     console.error('❌ Не удалось запустить бота:', error);
     process.exit(1);
@@ -46,6 +60,7 @@ const shutdown = async (signal) => {
     console.log(`🛑 ${signal}: останавливаюсь…`);
     stopAutopost();
     stopDigest();
+    stopKeepAlive();
     bot.stop(signal);
     server.close();
     if (history.save) await history.save();

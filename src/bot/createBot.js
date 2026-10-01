@@ -1,4 +1,5 @@
 import { Telegraf } from 'telegraf';
+import { logUpdates } from './launch.js';
 import { registerStartHandlers } from './handlers/start.js';
 import { registerChannel } from './handlers/channel.js';
 import { registerPostActions } from './handlers/postActions.js';
@@ -22,6 +23,8 @@ export function createBot(deps) {
         deps.health?.markUpdate();
         return next();
     });
+    // Первым делом — строка в лог: видно, доходят ли сообщения до бота
+    if (deps.config.logUpdates) bot.use(logUpdates());
 
     registerStartHandlers(bot);
     registerChannel(bot, deps);

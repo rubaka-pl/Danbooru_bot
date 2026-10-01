@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/webhook.js": {
+      "maxDuration": 300
+    },
+    "api/autopost.js": {
+      "maxDuration": 120
+    },
+    "api/digest.js": {
+      "maxDuration": 300
+    }
+  }
+}

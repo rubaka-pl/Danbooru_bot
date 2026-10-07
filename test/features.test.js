@@ -26,7 +26,8 @@ test('/settings: показ и переключение всех настрое�
     await t.click('set:count:5');
     await t.click('set:quick');
     await t.click('set:safe');
-    assert.deepEqual(await t.userData.settings.get(42), { rating: 'sensitive', count: 5, quick: true, safe: true, hide: [] });
+    await t.click('set:albums');
+    assert.deepEqual(await t.userData.settings.get(42), { rating: 'sensitive', count: 5, quick: true, safe: true, albums: false, hide: [] });
     assert.match(tg.calls('editMessageText').at(-1).payload.text, /Безопасный режим.*✅ вкл/);
 
     tg.clear();

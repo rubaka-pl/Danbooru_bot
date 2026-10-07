@@ -39,15 +39,16 @@ async function download(url, userAgent, limit) {
  * @param {string} [options.header] — строка в начале подписи (HTML)
  * @param {string} [options.caption] — своя подпись вместо стандартной
  * @param {object} [options.extra] — доп. параметры Telegram (reply_markup и т.п.)
+ * @param {Function} [options.tagLink] — теги в подписи станут ссылками (см. utils/tagLinks.js)
  * @returns {Promise<object|null>} отправленное сообщение или null
  */
-export async function sendPost(telegram, chatId, post, { client, userAgent, query, header, caption, extra = {} }) {
+export async function sendPost(telegram, chatId, post, { client, userAgent, query, header, caption, tagLink, extra = {} }) {
     const media = pickMedia(post, client.baseUrl);
     if (!media) return null;
 
     const method = METHODS[media.type];
     const options = {
-        caption: caption ?? buildCaption(post, { postUrl: client.postUrl(post.id), query, header }),
+        caption: caption ?? buildCaption(post, { postUrl: client.postUrl(post.id), query, header, tagLink }),
         parse_mode: 'HTML',
         ...extra
     };
@@ -75,9 +76,10 @@ export async function sendPost(telegram, chatId, post, { client, userAgent, quer
 /**
  * Отправляет альбом (2–10 картинок). Подпись с полной информацией — у первой,
  * у остальных — короткая.
+ * @param {object} [options.extra] — доп. параметры Telegram (например, disable_notification)
  * @returns {Promise<Array<{ message: object, post: object }>>}
  */
-export async function sendAlbum(telegram, chatId, posts, { client, userAgent, header }) {
+export async function sendAlbum(telegram, chatId, posts, { client, userAgent, header, tagLink, extra }) {
     const items = posts
         .map(post => ({ post, media: pickMedia(post, client.baseUrl) }))
         .filter(item => item.media && (item.media.type === 'photo' || item.media.type === 'video'))
@@ -89,8 +91,8 @@ export async function sendAlbum(telegram, chatId, posts, { client, userAgent, he
         media: sources[index],
         parse_mode: 'HTML',
         caption: index === 0
-            ? buildCaption(post, { postUrl: client.postUrl(post.id), header, maxGeneralTags: 10 })
-            : buildCaption(post, { postUrl: client.postUrl(post.id), compact: true })
+            ? buildCaption(post, { postUrl: client.postUrl(post.id), header, maxGeneralTags: 10, tagLink })
+            : buildCaption(post, { postUrl: client.postUrl(post.id), compact: true, tagLink })
     }));
 
     // 1) оригиналы по ссылкам, 2) уменьшенные копии, 3) загрузка файлами
@@ -102,7 +104,7 @@ export async function sendAlbum(telegram, chatId, posts, { client, userAgent, he
     let messages;
     for (const urls of attempts) {
         try {
-            messages = await telegram.sendMediaGroup(chatId, build(urls));
+            messages = await telegram.sendMediaGroup(chatId, build(urls), extra);
             break;
         } catch (error) {
             if (isFatalTelegramError(error)) throw error;
@@ -117,7 +119,7 @@ export async function sendAlbum(telegram, chatId, posts, { client, userAgent, he
                 filename: `danbooru_${post.id}.${post.file_ext}`
             });
         }
-        messages = await telegram.sendMediaGroup(chatId, build(sources));
+        messages = await telegram.sendMediaGroup(chatId, build(sources), extra);
     }
     return messages.map((message, index) => ({ message, post: items[index].post }));
 }

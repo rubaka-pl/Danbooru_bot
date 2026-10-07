@@ -12,6 +12,8 @@ import { originalUrl } from '../utils/posts.js';
  */
 
 const LINE_MARK = '🔹';
+// Строка «прошлого запроса» под лентой тега — для кнопки «🔀 Смешать»
+export const MIX_MARK = '🔀';
 
 function formatTag(tag) {
     const name = `${tag.negated ? '-' : ''}${tag.name}`;
@@ -26,12 +28,17 @@ export function formatGroupLine(tags) {
     return `${LINE_MARK} ${sorted.map(formatTag).join(' + ')}`;
 }
 
+/** Строка «🔀 прошлый запрос» (без сортировки и счётчиков). */
+export function formatMixLine(tags) {
+    return `${MIX_MARK} ${tags.map(formatTag).join(' + ')}`;
+}
+
 /** Достаёт группы тегов обратно из текста сообщения (plain text). */
-export function parseGroupsFromMessage(text = '') {
+export function parseGroupsFromMessage(text = '', mark = LINE_MARK) {
     return text
         .split('\n')
-        .filter(line => line.startsWith(LINE_MARK))
-        .map(line => line.slice(LINE_MARK.length).trim())
+        .filter(line => line.startsWith(mark))
+        .map(line => line.slice(mark.length).trim())
         .map(line => line.split(' + ').map((item, index) => {
             const [raw, suffix] = item.trim().split(' ');
             const negated = raw.startsWith('-');
@@ -42,12 +49,25 @@ export function parseGroupsFromMessage(text = '') {
         }).filter(tag => tag.name));
 }
 
-export function searchKeyboard(rating, counts, { subscribe = false } = {}) {
+/** Кнопки по `size` в ряд. */
+export function chunk(items, size) {
+    const rows = [];
+    for (let i = 0; i < items.length; i += size) rows.push(items.slice(i, i + size));
+    return rows;
+}
+
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.subscribe] — кнопка «🔔 Подписаться»
+ * @param {string} [options.mix] — подпись кнопки «🔀 Смешать с прошлым запросом»
+ */
+export function searchKeyboard(rating, counts, { subscribe = false, mix } = {}) {
     const ratingRow = Object.keys(RATINGS).map(key =>
         Markup.button.callback(`${key === rating ? '✅ ' : ''}${RATINGS[key].label}`, `r:${key}`)
     );
-    const countRow = counts.map(n => Markup.button.callback(`📥 ${n}`, `s:${rating}:${n}`));
-    const rows = [ratingRow.slice(0, 2), ratingRow.slice(2), countRow];
+    const countButtons = counts.map(n => Markup.button.callback(`📥 ${n}`, `s:${rating}:${n}`));
+    const rows = [ratingRow.slice(0, 2), ratingRow.slice(2), ...chunk(countButtons, 3)];
+    if (mix) rows.push([Markup.button.callback(mix, `mix:${rating}`)]);
     if (subscribe) rows.push([Markup.button.callback('🔔 Подписаться на новые', `sub:${rating}`)]);
     return Markup.inlineKeyboard(rows);
 }

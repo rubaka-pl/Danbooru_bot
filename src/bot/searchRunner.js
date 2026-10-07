@@ -1,8 +1,9 @@
 import { findPosts } from '../services/postSearch.js';
-import { sendPost } from '../services/sender.js';
-import { enforceSafe, isAdult, ratingLabel } from '../utils/ratings.js';
+import { isFatalTelegramError, sendAlbum, sendPost } from '../services/sender.js';
+import { enforceSafe, isAdult, ratingFromCode, ratingLabel } from '../utils/ratings.js';
 import { escapeHtml } from '../utils/format.js';
-import { describeRating, formatGroupLine, postKeyboard, searchKeyboard } from './request.js';
+import { tagLinker } from '../utils/tagLinks.js';
+import { describeRating, formatGroupLine, formatMixLine, postKeyboard, searchKeyboard } from './request.js';
 import { hourlyQuota, recordSent, seenFor, tryLock, unlock } from './chatState.js';
 
 export const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -26,6 +27,12 @@ export const limitText = (minutes) =>
 
 export const BUSY_TEXT = '⏳ Подожди, ещё отправляю предыдущие картинки';
 
+const ALBUM_SIZE = 10;
+// Без звука: уведомление даёт только первая картинка пачки
+const SILENT = { disable_notification: true };
+
+const shorten = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
 /**
  * Общая логика поиска и отправки картинок пользователю.
  */
@@ -33,6 +40,12 @@ export function createSearchRunner({ client, config, userData, runTask }) {
     const { counts, sendDelayMs, hourlyLimit } = config.search;
     const limitFor = (chatId) => (config.adminIds.includes(chatId) ? 0 : hourlyLimit);
     const tagLimit = config.danbooru.tagLimit;
+    const albumFrom = config.search.albumFrom ?? ALBUM_SIZE;
+    // Имя бота — для ссылок-тегов в подписи (берётся из первого апдейта, см. createBot)
+    let botUsername = null;
+    const rememberBot = (botInfo) => {
+        if (botInfo?.username) botUsername = botInfo.username;
+    };
 
     /** Фильтр: уже видел, есть тег из блок-листа или 18+ в безопасном режиме. */
     async function skipFor(chatId) {
@@ -45,28 +58,72 @@ export function createSearchRunner({ client, config, userData, runTask }) {
         return skip;
     }
 
-    /** Отправляет посты по одному с кнопками. @returns число отправленных */
-    async function sendResults(telegram, chatId, posts, count, { query, header } = {}) {
+    /**
+     * Отправляет посты: по одному с кнопками или альбомами по 10 (albums).
+     * Звук — только у первого сообщения, остальные приходят тихо.
+     * @param {string} [options.rating] — рейтинг ленты для ссылок-тегов (иначе — рейтинг поста)
+     * @returns число отправленных
+     */
+    async function sendResults(telegram, chatId, posts, count, { query, header, rating, albums = false } = {}) {
         const seen = seenFor(chatId);
+        const linkFor = (post) => tagLinker(botUsername, rating ?? ratingFromCode(post.rating));
         let sent = 0;
-        for (const post of posts) {
-            if (sent >= count) break;
+        const delivered = (post) => {
+            seen.add(post.md5);
+            recordSent(chatId);
+            sent++;
+        };
+        const limitReached = async () => {
             const quota = hourlyQuota(chatId, limitFor(chatId));
-            if (quota.limited) {
-                await telegram.sendMessage(chatId, limitText(quota.retryInMinutes));
-                break;
-            }
+            if (quota.limited) await telegram.sendMessage(chatId, limitText(quota.retryInMinutes));
+            return quota.limited;
+        };
+        const sendOne = async (post) => {
             const message = await withTelegramRetry(() => sendPost(telegram, chatId, post, {
                 client,
                 userAgent: config.danbooru.userAgent,
                 query,
                 header: sent === 0 ? header : undefined,
-                extra: postKeyboard(post, client.baseUrl)
+                tagLink: linkFor(post),
+                extra: { ...postKeyboard(post, client.baseUrl), ...(sent > 0 ? SILENT : {}) }
             }));
-            if (!message) continue;
-            seen.add(post.md5);
-            recordSent(chatId);
-            sent++;
+            if (message) delivered(post);
+            return Boolean(message);
+        };
+        const sendBatch = async (batch) => {
+            try {
+                return await withTelegramRetry(() => sendAlbum(telegram, chatId, batch, {
+                    client,
+                    userAgent: config.danbooru.userAgent,
+                    header: sent === 0 ? header : undefined,
+                    tagLink: linkFor(batch[0]),
+                    extra: sent > 0 ? SILENT : undefined
+                }));
+            } catch (error) {
+                if (isFatalTelegramError(error)) throw error;
+                console.warn(`⚠️ Альбом не ушёл, шлю по одной: ${error.message}`);
+                return [];
+            }
+        };
+
+        let index = 0;
+        while (sent < count && index < posts.length) {
+            if (await limitReached()) break;
+            if (!albums || count - sent < 2) {
+                const ok = await sendOne(posts[index++]);
+                if (ok && sent < count) await sleep(sendDelayMs);
+                continue;
+            }
+            const batch = posts.slice(index, index + Math.min(ALBUM_SIZE, count - sent));
+            index += batch.length;
+            const inAlbum = new Set((batch.length >= 2 ? await sendBatch(batch) : []).map(item => item.post));
+            for (const post of inAlbum) delivered(post);
+            // Что не попало в альбом (гифки, сбой альбома) — по одной
+            for (const post of batch) {
+                if (inAlbum.has(post) || sent >= count) continue;
+                if (await limitReached()) return sent;
+                await sendOne(post);
+            }
             if (sent < count) await sleep(sendDelayMs);
         }
         return sent;
@@ -74,15 +131,17 @@ export function createSearchRunner({ client, config, userData, runTask }) {
 
     /**
      * Ищет и отправляет картинки по группам тегов.
+     * @param {Array} [options.mixWith] — прошлый запрос: под итогом появится «🔀 Смешать»
      */
-    async function runSearch(telegram, chatId, groups, requestedRating, count, { finalKeyboard = true, header } = {}) {
+    async function runSearch(telegram, chatId, groups, requestedRating, count, { finalKeyboard = true, header, mixWith } = {}) {
         const settings = await userData.settings.get(chatId);
         const { rating, changed } = enforceSafe(requestedRating, settings.safe);
         if (changed) {
             await telegram.sendMessage(chatId, '🔒 Включён безопасный режим — ищу только safe. Выключить: /settings');
         }
-        const progress = await telegram.sendMessage(chatId, `🔍 Ищу… (${ratingLabel(rating)})`);
+        const progress = await telegram.sendMessage(chatId, `🔍 Ищу… (${ratingLabel(rating)})`, SILENT);
         const skip = await skipFor(chatId);
+        const albums = settings.albums && count >= albumFrom;
 
         try {
             for (const tags of groups) {
@@ -90,7 +149,9 @@ export function createSearchRunner({ client, config, userData, runTask }) {
                 const posts = await findPosts(client, { tags, rating, count, tagLimit, skip, limit: skip.strict ? 200 : undefined });
                 const sent = await sendResults(telegram, chatId, posts, count, {
                     query: groups.length > 1 ? title.replace(/_/g, ' ') : undefined,
-                    header
+                    header,
+                    rating,
+                    albums
                 });
 
                 if (sent === 0) {
@@ -101,7 +162,7 @@ export function createSearchRunner({ client, config, userData, runTask }) {
                 } else if (sent < count) {
                     await telegram.sendMessage(chatId,
                         `ℹ️ По <code>${escapeHtml(title)}</code> нашлось только ${sent} из ${count}.`,
-                        { parse_mode: 'HTML' });
+                        { parse_mode: 'HTML', ...SILENT });
                 }
             }
         } catch (error) {
@@ -111,9 +172,12 @@ export function createSearchRunner({ client, config, userData, runTask }) {
         }
 
         if (finalKeyboard && groups.some(tags => tags.length)) {
+            const mix = mixWith?.length
+                ? `🔀 Смешать с «${shorten(groupTitle(mixWith), 30)}»`
+                : undefined;
             await telegram.sendMessage(chatId,
-                ['✅ Готово! Хочешь ещё?', ...groups.map(formatGroupLine), describeRating(rating)].join('\n'),
-                { parse_mode: 'HTML', ...searchKeyboard(rating, counts, { subscribe: true }) });
+                ['✅ Готово! Хочешь ещё?', ...groups.map(formatGroupLine), ...(mix ? [formatMixLine(mixWith)] : []), describeRating(rating)].join('\n'),
+                { parse_mode: 'HTML', ...SILENT, ...searchKeyboard(rating, counts, { subscribe: true, mix }) });
         }
     }
 
@@ -150,7 +214,7 @@ export function createSearchRunner({ client, config, userData, runTask }) {
         });
     }
 
-    return { runSearch, startSearch, startDefaultSearch, startTask, sendResults, skipFor };
+    return { runSearch, startSearch, startDefaultSearch, startTask, sendResults, skipFor, rememberBot };
 }
 
 export async function reportError(telegram, chatId, error) {

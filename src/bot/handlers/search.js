@@ -25,9 +25,11 @@ export function registerSearchHandlers(bot, deps) {
             .map(line => line.startsWith('🔹') ? formatGroupLine(groups.shift() ?? []) : escapeHtml(line))
             .join('\n');
 
-        // Кнопка «Подписаться» есть только под итоговым сообщением — сохраняем её
-        const subscribe = JSON.stringify(ctx.callbackQuery.message?.reply_markup ?? {}).includes('"sub:');
-        const keyboard = searchKeyboard(rating, counts, { subscribe });
+        // «Подписаться» и «🔀 Смешать» есть только под итоговым сообщением — сохраняем их
+        const buttons = (ctx.callbackQuery.message?.reply_markup?.inline_keyboard ?? []).flat();
+        const subscribe = buttons.some(b => b.callback_data?.startsWith('sub:'));
+        const mix = buttons.find(b => b.callback_data?.startsWith('mix:'))?.text;
+        const keyboard = searchKeyboard(rating, counts, { subscribe, mix });
         await ctx.editMessageText(html, { parse_mode: 'HTML', ...keyboard })
             .catch(() => ctx.editMessageReplyMarkup(keyboard.reply_markup).catch(() => {}));
     });

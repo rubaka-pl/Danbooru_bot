@@ -44,6 +44,13 @@ export const config = {
         albumSize: [5, 10],
         // Примерно каждый N-й автопост — «⚔️ Битва артов» с опросом (0 — выкл.)
         battleEvery: toInt(env.BATTLE_EVERY, 25),
+        // Волны трендов: TREND_HOURS часов — популярное на Danbooru за день/неделю,
+        // потом TREND_PAUSE_HOURS часов — обычные посты, и снова по кругу. TRENDS=off — выкл.
+        trends: {
+            enabled: (env.TRENDS || 'on').toLowerCase() !== 'off',
+            hours: Number.parseFloat(env.TREND_HOURS ?? '4'),
+            pauseHours: Number.parseFloat(env.TREND_PAUSE_HOURS ?? '2')
+        },
         // Доля постов, подобранных по статистике реакций в канале (0..1)
         adaptiveShare: Number.parseFloat(env.ADAPTIVE_SHARE ?? '0.4'),
         historyFile: path.resolve(env.HISTORY_FILE || './data/sent_images.json'),

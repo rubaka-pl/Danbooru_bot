@@ -110,6 +110,7 @@ export function testConfig(overrides = {}) {
     config.search.sendDelayMs = 0;
     config.autopost.channelId = '@test_channel';
     config.autopost.quietHours = null;
+    config.autopost.trends.enabled = false; // волны трендов зависят от времени — в тестах выключены
     config.adminIds = [];
     config.logUpdates = false;
     return Object.assign(config, overrides);

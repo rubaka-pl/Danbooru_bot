@@ -153,12 +153,12 @@ test('цикл автопоста: пишет в лог начало и коне
 });
 
 // ---------- Волны трендов ----------
-import { isTrendTime } from '../src/services/autopost.js';
+import { isTrendTime, TREND_WAVE_KEY } from '../src/services/autopost.js';
 
 const H = 60 * 60 * 1000;
-const trends = { enabled: true, hours: 4, pauseHours: 2 };
+const trends = { enabled: true, hours: 4, pauseHours: 2, perWave: 10 };
 
-test('цикл: 4 часа трендов → 2 часа обычных → снова тренды', () => {
+test('цикл: 4 часа волна трендов → 2 часа без трендов → снова волна', () => {
     const at = (hours) => new Date(hours * H);
     assert.equal(isTrendTime(at(0), trends), true);
     assert.equal(isTrendTime(at(3.9), trends), true);
@@ -169,27 +169,58 @@ test('цикл: 4 часа трендов → 2 часа обычных → сн
     assert.equal(isTrendTime(at(1), null), false);
 });
 
-test('в волну трендов постится популярное (нужного рейтинга) с пометкой 🔥', async (t) => {
-    randomSequence(t, [0.99]);
+const trendSetup = () => {
     const config = testConfig();
     config.autopost.trends = trends;
-    const deps = setup({ config });
-    assert.equal(await autopostOnce({ ...deps, now: new Date(1 * H) }), 'posted');
-    assert.deepEqual(deps.client.calls[0], ['popular', { scale: 'day' }]);
-    assert.ok(!deps.client.calls.some(c => c[0] === 'posts'));
-    assert.equal(deps.telegram.calls.length, 1);
+    config.autopost.intervalMs = 60_000;
+    return setup({ config });
+};
+
+test('в волну тренд выпадает вперемешку с обычными постами: шанс = осталось трендов / осталось постов', async (t) => {
+    // 1-й random — рейтинг (0.99 → general), 2-й — бросок на тренд
+    // До конца волны 3 часа = 180 постов, трендов 10 → шанс ≈ 0.055
+    randomSequence(t, [0.99, 0.05, 0]);
+    const lucky = trendSetup();
+    lucky.store = new MemoryStore();
+    assert.equal(await autopostOnce({ ...lucky, now: new Date(1 * H) }), 'posted');
+    assert.deepEqual(lucky.client.calls[0], ['popular', { scale: 'day' }]);
+    assert.deepEqual(await lucky.store.get(TREND_WAVE_KEY), { index: 0, count: 1 });
+
+    t.mock.restoreAll();
+    randomSequence(t, [0.99, 0.06, 0.99]);
+    const regular = trendSetup();
+    regular.store = new MemoryStore();
+    await autopostOnce({ ...regular, now: new Date(1 * H) });
+    assert.ok(!regular.client.calls.some(c => c[0] === 'popular'));
 });
 
-test('вне волны — обычный пост; тренды кончились — тоже обычный', async (t) => {
-    randomSequence(t, [0.99]);
+test('лимит трендов за волну; новая волна — счёт заново; вне волны трендов нет', async (t) => {
+    randomSequence(t, [0.99, 0]);
+    const deps = trendSetup();
+    deps.store = new MemoryStore();
+
+    await deps.store.set(TREND_WAVE_KEY, { index: 0, count: 10 });
+    await autopostOnce({ ...deps, now: new Date(1 * H) });
+    assert.ok(!deps.client.calls.some(c => c[0] === 'popular'));
+
+    t.mock.restoreAll();
+    randomSequence(t, [0.99, 0]);
+    await autopostOnce({ ...deps, now: new Date(7 * H) }); // волна №1
+    assert.ok(deps.client.calls.some(c => c[0] === 'popular'));
+    assert.deepEqual(await deps.store.get(TREND_WAVE_KEY), { index: 1, count: 1 });
+
+    deps.client.calls.length = 0;
+    await autopostOnce({ ...deps, now: new Date(5 * H) }); // пауза
+    assert.ok(!deps.client.calls.some(c => c[0] === 'popular'));
+});
+
+test('свежие тренды кончились — обычный пост', async (t) => {
+    randomSequence(t, [0.99, 0]);
     const config = testConfig();
     config.autopost.trends = trends;
-
-    const normal = setup({ config });
-    await autopostOnce({ ...normal, now: new Date(5 * H) });
-    assert.ok(!normal.client.calls.some(c => c[0] === 'popular'));
-
     const client = fakeClient({ popular: async () => [], posts: async (p) => (p.tags.includes('order:rank') ? [] : [makePost()]) });
-    const exhausted = setup({ client, config });
-    assert.equal(await autopostOnce({ ...exhausted, now: new Date(1 * H) }), 'posted');
+    const deps = setup({ client, config });
+    deps.store = new MemoryStore();
+    assert.equal(await autopostOnce({ ...deps, now: new Date(1 * H) }), 'posted');
+    assert.equal(await deps.store.get(TREND_WAVE_KEY), null);
 });

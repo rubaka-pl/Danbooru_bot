@@ -23,7 +23,7 @@ export function createApp({ serverless = false, runTask = (p) => p.catch(console
     }
 
     const client = createDanbooruClient(config.danbooru);
-    const boorus = createBooruClients(client, { userAgent: config.danbooru.userAgent, keys: config.boorus });
+    const boorus = createBooruClients(client, { userAgent: config.danbooru.userAgent });
     const resolver = createTagResolver(client);
     const hasRedis = Boolean(config.redis.url && config.redis.token);
 

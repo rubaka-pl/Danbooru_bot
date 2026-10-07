@@ -1,8 +1,8 @@
 import { DanbooruError } from './danbooru.js';
 
 /*
- * Другие борды: Gelbooru-подобные (Gelbooru, Safebooru, Rule34) и Moebooru
- * (Konachan, Yande.re). Посты приводятся к формату Danbooru, чтобы поиск,
+ * Другие борды: Gelbooru и Moebooru (Konachan, Yande.re). Ключи не нужны.
+ * Посты приводятся к формату Danbooru, чтобы поиск,
  * фильтры и отправка работали без изменений. Категорий тегов (автор/персонаж)
  * у этих API нет — все теги идут в общий список.
  *
@@ -12,7 +12,6 @@ import { DanbooruError } from './danbooru.js';
 
 // Рейтинг Danbooru (g/s/e) → значение метатега rating: на борде
 const GELBOORU_RATINGS = { g: 'general', s: 'sensitive', e: 'explicit' };
-const RULE34_RATINGS = { g: 'safe', s: 'questionable', e: 'explicit' };
 const MOEBOORU_RATINGS = { g: 's', s: 'q', e: 'e' };
 
 // Рейтинг борды → код Danbooru (q считается 18+, как и e)
@@ -23,8 +22,6 @@ const TO_DANBOORU_RATING = {
 
 export const BOORUS = {
     gelbooru: { name: 'Gelbooru', kind: 'gelbooru', baseUrl: 'https://gelbooru.com', ratings: GELBOORU_RATINGS, tagLimit: 10 },
-    safebooru: { name: 'Safebooru', kind: 'gelbooru', baseUrl: 'https://safebooru.org', ratings: null, tagLimit: 10, safeOnly: true },
-    rule34: { name: 'Rule34', kind: 'gelbooru', baseUrl: 'https://api.rule34.xxx', siteUrl: 'https://rule34.xxx', ratings: RULE34_RATINGS, tagLimit: 10, needsKey: true },
     konachan: { name: 'Konachan', kind: 'moebooru', baseUrl: 'https://konachan.com', ratings: MOEBOORU_RATINGS, tagLimit: 6 },
     yandere: { name: 'Yande.re', kind: 'moebooru', baseUrl: 'https://yande.re', ratings: MOEBOORU_RATINGS, tagLimit: 6 }
 };
@@ -43,8 +40,7 @@ export function translateTags(tags, site, { random }) {
     for (const tag of tags) {
         const rating = /^(-?)rating:([gse])$/.exec(tag);
         if (rating) {
-            // Safebooru — только safe, рейтинг не нужен
-            if (site.ratings) out.push(`${rating[1]}rating:${site.ratings[rating[2]]}`);
+            out.push(`${rating[1]}rating:${site.ratings[rating[2]]}`);
             continue;
         }
         out.push(tag);
@@ -53,23 +49,17 @@ export function translateTags(tags, site, { random }) {
     return out;
 }
 
-/** Пост Gelbooru / Safebooru / Rule34 → формат Danbooru. */
+/** Пост Gelbooru → формат Danbooru. */
 export function normalizeGelbooruPost(raw, site) {
-    const base = site.siteUrl ?? site.baseUrl;
-    const image = raw.image ?? '';
-    const ext = extOf(raw.file_url || image);
-    const dir = raw.directory;
-    // У Safebooru ссылок в ответе нет — собираем из directory/image
-    const fileUrl = raw.file_url || (dir && image ? `${base}/images/${dir}/${image}` : null);
-    const sampleUrl = raw.sample_url
-        || (raw.sample && dir && image ? `${base}/samples/${dir}/sample_${image.replace(/\.\w+$/, '.jpg')}` : null);
-    const previewUrl = raw.preview_url
-        || (dir && image ? `${base}/thumbnails/${dir}/thumbnail_${image.replace(/\.\w+$/, '.jpg')}` : null);
+    const fileUrl = raw.file_url || null;
+    const ext = extOf(fileUrl || raw.image || '');
+    const sampleUrl = raw.sample_url || null;
+    const previewUrl = raw.preview_url || null;
     const tags = String(raw.tags ?? '').trim().split(/\s+/).filter(Boolean).join(' ');
     return {
         id: Number(raw.id),
-        md5: raw.md5 ?? raw.hash ?? `${site.name}_${raw.id}`,
-        rating: site.safeOnly ? 'g' : (TO_DANBOORU_RATING[raw.rating] ?? 'q'),
+        md5: raw.md5 ?? `${site.name}_${raw.id}`,
+        rating: TO_DANBOORU_RATING[raw.rating] ?? 'q',
         score: Number(raw.score ?? 0),
         file_ext: ext,
         file_url: fileUrl,
@@ -84,7 +74,7 @@ export function normalizeGelbooruPost(raw, site) {
         tag_string_artist: '',
         tag_string_character: '',
         tag_string_copyright: '',
-        created_at: toIso(raw.created_at) ?? toIso(Number(raw.change)),
+        created_at: toIso(raw.created_at),
         source: raw.source ?? ''
     };
 }
@@ -119,10 +109,8 @@ export function normalizeMoebooruPost(raw, site) {
 /**
  * Клиент другой борды с тем же интерфейсом поиска, что у Danbooru.
  * @param {string} id — ключ из BOORUS
- * @param {object} options
- * @param {{ apiKey?: string, userId?: string }} [options.credentials]
  */
-export function createBooruClient(id, { userAgent, timeout = 15000, credentials = {}, fetchImpl } = {}) {
+export function createBooruClient(id, { userAgent, timeout = 15000, fetchImpl } = {}) {
     const site = BOORUS[id];
     if (!site) throw new Error(`Неизвестная борда: ${id}`);
     const doFetch = fetchImpl ?? ((...args) => globalThis.fetch(...args));
@@ -139,10 +127,7 @@ export function createBooruClient(id, { userAgent, timeout = 15000, credentials 
         }
         const text = await res.text();
         if (!res.ok) {
-            const hint = res.status === 401 || res.status === 403
-                ? ` — ${site.name} требует API-ключ (см. docs/SETUP.md)`
-                : '';
-            throw new DanbooruError(`${site.name}: HTTP ${res.status}${hint}`, res.status);
+            throw new DanbooruError(`${site.name}: HTTP ${res.status}`, res.status);
         }
         if (!text.trim()) return [];
         try {
@@ -155,12 +140,8 @@ export function createBooruClient(id, { userAgent, timeout = 15000, credentials 
     async function gelbooruPosts(params) {
         const url = new URL('/index.php', site.baseUrl);
         url.search = new URLSearchParams({ page: 'dapi', s: 'post', q: 'index', json: '1', ...params }).toString();
-        if (credentials.apiKey && credentials.userId) {
-            url.searchParams.set('api_key', credentials.apiKey);
-            url.searchParams.set('user_id', credentials.userId);
-        }
         const body = await request(url);
-        // Gelbooru: { post: [...] }, Safebooru/Rule34: [...]
+        // Gelbooru: { post: [...] }; без результатов поля post нет
         const list = Array.isArray(body) ? body : Array.isArray(body?.post) ? body.post : [];
         return list.map(raw => normalizeGelbooruPost(raw, site));
     }
@@ -177,7 +158,7 @@ export function createBooruClient(id, { userAgent, timeout = 15000, credentials 
     return {
         id,
         name: site.name,
-        baseUrl: site.siteUrl ?? site.baseUrl,
+        baseUrl: site.baseUrl,
         tagLimit: site.tagLimit,
 
         async posts({ tags = [], limit = 20, random = false, page } = {}) {
@@ -201,20 +182,14 @@ export function createBooruClient(id, { userAgent, timeout = 15000, credentials 
         postUrl(postId) {
             return site.kind === 'moebooru'
                 ? `${site.baseUrl}/post/show/${postId}`
-                : `${site.siteUrl ?? site.baseUrl}/index.php?page=post&s=view&id=${postId}`;
+                : `${site.baseUrl}/index.php?page=post&s=view&id=${postId}`;
         }
     };
 }
 
-/**
- * Все клиенты: { danbooru, gelbooru, ... }. Борды, которым нужен ключ, без ключа не подключаются.
- */
-export function createBooruClients(danbooruClient, { userAgent, keys = {} } = {}) {
+/** Все клиенты: { danbooru, gelbooru, konachan, yandere }. Danbooru — основной. */
+export function createBooruClients(danbooruClient, { userAgent } = {}) {
     const clients = { danbooru: Object.assign(danbooruClient, { id: 'danbooru', name: 'Danbooru' }) };
-    for (const id of Object.keys(BOORUS)) {
-        const credentials = keys[id] ?? {};
-        if (BOORUS[id].needsKey && !(credentials.apiKey && credentials.userId)) continue;
-        clients[id] = createBooruClient(id, { userAgent, credentials });
-    }
+    for (const id of Object.keys(BOORUS)) clients[id] = createBooruClient(id, { userAgent });
     return clients;
 }

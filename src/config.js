@@ -23,13 +23,6 @@ export const config = {
         userAgent: 'DanbooruTelegramBot/2.0 (+https://github.com/rubaka-pl/Danbooru_bot)'
     },
 
-    // Другие борды (выбираются в /settings → «Источник»). Rule34 без ключа не подключается,
-    // Gelbooru без ключа работает с ограничениями. Ключ: настройки аккаунта → Options → API Access.
-    boorus: {
-        gelbooru: { apiKey: env.GELBOORU_API_KEY || '', userId: env.GELBOORU_USER_ID || '' },
-        rule34: { apiKey: env.RULE34_API_KEY || '', userId: env.RULE34_USER_ID || '' }
-    },
-
     search: {
         counts: [1, 3, 5, 10, 20, 30],
         albumFrom: 10,       // с такого количества картинки идут альбомами по 10 (если включено в /settings)

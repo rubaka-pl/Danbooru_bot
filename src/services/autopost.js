@@ -19,15 +19,45 @@ async function freshPosts(posts, history, limit) {
 }
 
 const HOUR = 60 * 60 * 1000;
+export const TREND_WAVE_KEY = 'autopost:trendWave';
 
 /**
- * Идёт ли сейчас волна трендов. Цикл «hours трендов → pauseHours обычных»
- * считается от времени, без состояния — одинаково на Render и Vercel.
+ * Текущая волна трендов или null. Цикл «hours волна → pauseHours без трендов»
+ * считается от времени — одинаково на Render и Vercel.
+ * @returns {{ index: number, endsAt: number } | null}
  */
-export function isTrendTime(now, trends) {
-    if (!trends?.enabled || !(trends.hours > 0)) return false;
+export function trendWave(now, trends) {
+    if (!trends?.enabled || !(trends.hours > 0)) return null;
     const cycle = (trends.hours + Math.max(trends.pauseHours, 0)) * HOUR;
-    return now.getTime() % cycle < trends.hours * HOUR;
+    const time = now.getTime();
+    if (time % cycle >= trends.hours * HOUR) return null;
+    const index = Math.floor(time / cycle);
+    return { index, endsAt: index * cycle + trends.hours * HOUR };
+}
+
+export const isTrendTime = (now, trends) => trendWave(now, trends) !== null;
+
+// Счётчик трендов волны, если хранилища нет (тесты, /api без Redis)
+let memoryWave = { index: -1, count: 0 };
+
+/**
+ * Пора ли поставить тренд: за волну — perWave штук, равномерно вперемешку
+ * с обычными постами (шанс = осталось трендов / осталось автопостов до конца волны).
+ */
+async function trendDue({ store, config, now }) {
+    const { trends, intervalMs } = config.autopost;
+    const wave = trendWave(now, trends);
+    if (!wave || !(trends.perWave > 0)) return null;
+    const saved = (store ? await store.get(TREND_WAVE_KEY).catch(() => null) : memoryWave) ?? {};
+    const count = saved.index === wave.index ? saved.count : 0;
+    if (count >= trends.perWave) return null;
+    const ticksLeft = Math.max(1, (wave.endsAt - now.getTime()) / Math.max(intervalMs, 1));
+    if (Math.random() >= (trends.perWave - count) / ticksLeft) return null;
+    return async () => {
+        const next = { index: wave.index, count: count + 1 };
+        if (store) await store.set(TREND_WAVE_KEY, next).catch(() => {});
+        else memoryWave = next;
+    };
 }
 
 /**
@@ -69,7 +99,7 @@ async function remember({ history, channelStats }, message, post) {
 /**
  * Один автопост в канал: обычно одна картинка, иногда альбом.
  * Часть постов подбирается по тегам, которые собирают больше всего реакций.
- * Во время волны трендов (см. isTrendTime) — популярное на Danbooru.
+ * Во время волны трендов (см. trendWave) — иногда популярное на Danbooru.
  * @param {boolean} [deps.force] — игнорировать паузу и тихие часы (команда /post)
  * @returns {Promise<'posted'|'album'|'battle'|'quiet'|'paused'|'empty'>}
  */
@@ -86,9 +116,13 @@ export async function autopostOnce(deps) {
 
     // Примерно каждый N-й пост — sensitive (случайно, чтобы работало и без состояния)
     const rating = Math.random() < 1 / autopost.sensitiveEvery ? 'sensitive' : 'general';
-    if (isTrendTime(now, autopost.trends)) {
+    const countTrend = await trendDue({ store, config, now });
+    if (countTrend) {
         const result = await postTrending(deps, rating);
-        if (result) return result;
+        if (result) {
+            await countTrend();
+            return result;
+        }
     }
 
     const defaultTags = autopost.tags.map(name => ({ name, meta: true, postCount: 0 }));

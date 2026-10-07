@@ -25,9 +25,11 @@ export function registerSearchHandlers(bot, deps) {
             .map(line => line.startsWith('🔹') ? formatGroupLine(groups.shift() ?? []) : escapeHtml(line))
             .join('\n');
 
-        // Кнопка «Подписаться» есть только под итоговым сообщением — сохраняем её
-        const subscribe = JSON.stringify(ctx.callbackQuery.message?.reply_markup ?? {}).includes('"sub:');
-        const keyboard = searchKeyboard(rating, counts, { subscribe });
+        // «Подписаться» и «🔀 Смешать» есть только под итоговым сообщением — сохраняем их
+        const buttons = (ctx.callbackQuery.message?.reply_markup?.inline_keyboard ?? []).flat();
+        const subscribe = buttons.some(b => b.callback_data?.startsWith('sub:'));
+        const mix = buttons.find(b => b.callback_data?.startsWith('mix:'))?.text;
+        const keyboard = searchKeyboard(rating, counts, { subscribe, mix });
         await ctx.editMessageText(html, { parse_mode: 'HTML', ...keyboard })
             .catch(() => ctx.editMessageReplyMarkup(keyboard.reply_markup).catch(() => {}));
     });
@@ -113,8 +115,19 @@ export function registerTextSearch(bot, deps) {
                 error?.isRateLimit ? '⏳ Danbooru просит подождать. Попробуй через минуту.' : `⚠️ Ошибка: ${error.message}`);
         }
 
-        const found = resolved.filter(g => g.tags.some(t => !t.negated));
         const settings = await userData.settings.get(ctx.chat.id);
+        // На других бордах есть теги, которых нет на Danbooru (западные персонажи и т.п.) —
+        // ненайденное отправляем как есть
+        if (settings.source && settings.source !== 'danbooru') {
+            for (const group of resolved) {
+                group.tags.push(...group.unresolved.map(term => {
+                    const negated = term.startsWith('-');
+                    return { name: normalizeTag(negated ? term.slice(1) : term), negated, postCount: 0 };
+                }).filter(tag => tag.name));
+                group.unresolved = [];
+            }
+        }
+        const found = resolved.filter(g => g.tags.some(t => !t.negated));
         const lines = [];
         const suggestions = [];
         for (const group of resolved) {

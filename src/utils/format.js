@@ -29,9 +29,17 @@ export function humanizeTag(tag) {
 
 const splitTags = (value) => (value || '').split(' ').filter(Boolean);
 
-function namedLine(icon, title, tags, max) {
+/** Тег-ссылка на ленту в боте (если tagLink дал ссылку). */
+function linked(text, tag, tagLink) {
+    const url = tagLink?.(tag);
+    return url ? `<a href="${escapeHtml(url)}">${escapeHtml(text)}</a>` : null;
+}
+
+function namedLine(icon, title, tags, max, tagLink) {
     if (!tags.length) return null;
     const items = tags.slice(0, max).map(tag => {
+        const link = linked(humanizeTag(tag), tag, tagLink);
+        if (link) return link;
         const hashtag = toHashtag(tag);
         return `${escapeHtml(humanizeTag(tag))}${hashtag ? ` ${hashtag}` : ''}`;
     });
@@ -42,13 +50,17 @@ function namedLine(icon, title, tags, max) {
 /**
  * Подпись к картинке. Гарантированно укладывается в лимит Telegram (1024 символа).
  * Разметка — HTML.
+ *
+ * @param {(tag: string) => string|null} [options.tagLink] — теги станут ссылками
+ *   (в личке бота: клик переключает ленту), иначе — обычные хэштеги
  */
-export function buildCaption(post, { postUrl, query, header, compact = false, maxGeneralTags = 25 } = {}) {
+export function buildCaption(post, { postUrl, query, header, compact = false, maxGeneralTags = 25, tagLink, siteName = 'Danbooru' } = {}) {
     if (compact) {
         // Короткая подпись для картинок внутри альбома
         const artist = splitTags(post.tag_string_artist)[0];
         const character = splitTags(post.tag_string_character)[0];
-        const parts = [character && escapeHtml(humanizeTag(character)), artist && `🎨 ${escapeHtml(humanizeTag(artist))}`]
+        const name = (tag) => linked(humanizeTag(tag), tag, tagLink) ?? escapeHtml(humanizeTag(tag));
+        const parts = [character && name(character), artist && `🎨 ${name(artist)}`]
             .filter(Boolean).join(' · ');
         const link = postUrl ? `<a href="${escapeHtml(postUrl)}">🔗</a>` : '';
         return [parts, link].filter(Boolean).join(' ');
@@ -57,26 +69,27 @@ export function buildCaption(post, { postUrl, query, header, compact = false, ma
     const lines = [
         header,
         query && `🔎 Запрос: ${escapeHtml(query)}`,
-        namedLine('🎨', 'Автор', splitTags(post.tag_string_artist), 3),
-        namedLine('👤', 'Персонаж', splitTags(post.tag_string_character), 4),
-        namedLine('📺', 'Тайтл', splitTags(post.tag_string_copyright), 2),
+        namedLine('🎨', 'Автор', splitTags(post.tag_string_artist), 3, tagLink),
+        namedLine('👤', 'Персонаж', splitTags(post.tag_string_character), 4, tagLink),
+        namedLine('📺', 'Тайтл', splitTags(post.tag_string_copyright), 2, tagLink),
         post.created_at && `📅 Дата: ${post.created_at.split('T')[0]}`
     ].filter(Boolean);
 
-    const footer = postUrl ? `🔗 <a href="${escapeHtml(postUrl)}">Открыть на Danbooru</a>` : '';
+    const footer = postUrl ? `🔗 <a href="${escapeHtml(postUrl)}">Открыть на ${escapeHtml(siteName)}</a>` : '';
 
     // Общие теги добавляем, пока влезают в лимит
     const general = splitTags(post.tag_string_general)
-        .map(toHashtag)
+        .map(tag => linked(tag.replace(/_/g, ' '), tag, tagLink) ?? toHashtag(tag))
         .filter(Boolean)
         .slice(0, maxGeneralTags);
 
     const visibleLength = (text) => text.replace(/<[^>]+>/g, '').replace(/&(amp|lt|gt);/g, '_').length;
     const base = [...lines, footer].filter(Boolean).join('\n');
     let tagsLine = '';
+    const separator = tagLink ? ', ' : ' ';
     for (const tag of general) {
-        const next = tagsLine ? `${tagsLine} ${tag}` : `🏷 Теги: ${tag}`;
-        if (visibleLength(base) + next.length + 1 > CAPTION_LIMIT) break;
+        const next = tagsLine ? `${tagsLine}${separator}${tag}` : `🏷 Теги: ${tag}`;
+        if (visibleLength(base) + visibleLength(next) + 1 > CAPTION_LIMIT) break;
         tagsLine = next;
     }
 

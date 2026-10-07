@@ -18,6 +18,49 @@ async function freshPosts(posts, history, limit) {
     return result;
 }
 
+const HOUR = 60 * 60 * 1000;
+
+/**
+ * Идёт ли сейчас волна трендов. Цикл «hours трендов → pauseHours обычных»
+ * считается от времени, без состояния — одинаково на Render и Vercel.
+ */
+export function isTrendTime(now, trends) {
+    if (!trends?.enabled || !(trends.hours > 0)) return false;
+    const cycle = (trends.hours + Math.max(trends.pauseHours, 0)) * HOUR;
+    return now.getTime() % cycle < trends.hours * HOUR;
+}
+
+/**
+ * Пост из трендов: популярное на Danbooru за день, потом за неделю,
+ * потом «горячее» (order:rank). Берём случайный из лучших ещё не опубликованных.
+ * @returns {Promise<'posted'|null>} null — свежих трендов нет, постим как обычно
+ */
+async function postTrending({ telegram, client, history, config, channelStats }, rating) {
+    const { autopost, danbooru } = config;
+    const code = rating === 'sensitive' ? 's' : 'g';
+    const sources = [
+        () => client.popular({ scale: 'day' }),
+        () => client.popular({ scale: 'week' }),
+        () => client.posts({ tags: ['order:rank', `rating:${code}`], limit: 100, page: randInt(1, 3) })
+    ];
+    for (const load of sources) {
+        const candidates = (await load().catch(() => []))
+            .filter(post => post.rating === code && !post.is_deleted && !post.is_banned);
+        const fresh = await freshPosts(candidates, history, 10);
+        // Перемешиваем лучшие, чтобы не идти строго по рейтингу
+        for (const post of fresh.sort(() => Math.random() - 0.5)) {
+            const message = await sendPost(telegram, autopost.channelId, post, {
+                client, userAgent: danbooru.userAgent, header: '🔥 <b>В тренде</b>', extra: channelKeyboard(post, client.baseUrl)
+            });
+            if (!message) continue;
+            await remember({ history, channelStats }, message, post);
+            console.log(`✅ Автопост: тренд ${post.id} (${rating})`);
+            return 'posted';
+        }
+    }
+    return null;
+}
+
 async function remember({ history, channelStats }, message, post) {
     await history.add(post.md5);
     await channelStats?.recordPost(message.message_id, post).catch(error => console.warn('⚠️ Статистика:', error.message));
@@ -26,6 +69,7 @@ async function remember({ history, channelStats }, message, post) {
 /**
  * Один автопост в канал: обычно одна картинка, иногда альбом.
  * Часть постов подбирается по тегам, которые собирают больше всего реакций.
+ * Во время волны трендов (см. isTrendTime) — популярное на Danbooru.
  * @param {boolean} [deps.force] — игнорировать паузу и тихие часы (команда /post)
  * @returns {Promise<'posted'|'album'|'battle'|'quiet'|'paused'|'empty'>}
  */
@@ -42,6 +86,11 @@ export async function autopostOnce(deps) {
 
     // Примерно каждый N-й пост — sensitive (случайно, чтобы работало и без состояния)
     const rating = Math.random() < 1 / autopost.sensitiveEvery ? 'sensitive' : 'general';
+    if (isTrendTime(now, autopost.trends)) {
+        const result = await postTrending(deps, rating);
+        if (result) return result;
+    }
+
     const defaultTags = autopost.tags.map(name => ({ name, meta: true, postCount: 0 }));
     const themed = (tag) => [{ name: tag, postCount: 0 }, { name: 'score:>20', meta: true, postCount: 0 }];
     const search = (tags, count) => findPosts(client, { tags, rating, count, tagLimit: danbooru.tagLimit });

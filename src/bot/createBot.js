@@ -1,6 +1,7 @@
 import { Telegraf } from 'telegraf';
 import { logUpdates } from './launch.js';
 import { registerStartHandlers } from './handlers/start.js';
+import { registerTagFeed } from './handlers/tagFeed.js';
 import { registerChannel } from './handlers/channel.js';
 import { registerPostActions } from './handlers/postActions.js';
 import { registerFavorites } from './handlers/favorites.js';
@@ -21,11 +22,14 @@ export function createBot(deps) {
 
     bot.use((ctx, next) => {
         deps.health?.markUpdate();
+        deps.runner?.rememberBot?.(ctx.botInfo);
         return next();
     });
     // Первым делом — строка в лог: видно, доходят ли сообщения до бота
     if (deps.config.logUpdates) bot.use(logUpdates());
 
+    // Раньше /start: ссылки-теги приходят как «/start t…»
+    registerTagFeed(bot, deps);
     registerStartHandlers(bot);
     registerChannel(bot, deps);
     registerPostActions(bot, deps);

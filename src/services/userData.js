@@ -30,6 +30,8 @@ export const DEFAULT_SETTINGS = {
     count: 3,          // сколько картинок в быстром режиме
     quick: false,      // быстрый режим: искать сразу, без подтверждения
     safe: false,       // безопасный режим: никогда не показывать 18+
+    albums: true,      // 10+ картинок — альбомами по 10, а не 10+ отдельных сообщений
+    source: 'danbooru', // где искать: danbooru, gelbooru, konachan… (см. services/boorus.js)
     hide: []           // ключи HIDE_PRESETS
 };
 

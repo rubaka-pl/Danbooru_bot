@@ -151,3 +151,45 @@ test('цикл автопоста: пишет в лог начало и коне
     assert.ok(logs.some(l => /Тихие часы закончились/.test(l)));
     stop();
 });
+
+// ---------- Волны трендов ----------
+import { isTrendTime } from '../src/services/autopost.js';
+
+const H = 60 * 60 * 1000;
+const trends = { enabled: true, hours: 4, pauseHours: 2 };
+
+test('цикл: 4 часа трендов → 2 часа обычных → снова тренды', () => {
+    const at = (hours) => new Date(hours * H);
+    assert.equal(isTrendTime(at(0), trends), true);
+    assert.equal(isTrendTime(at(3.9), trends), true);
+    assert.equal(isTrendTime(at(4.1), trends), false);
+    assert.equal(isTrendTime(at(5.9), trends), false);
+    assert.equal(isTrendTime(at(6.1), trends), true);
+    assert.equal(isTrendTime(at(1), { ...trends, enabled: false }), false);
+    assert.equal(isTrendTime(at(1), null), false);
+});
+
+test('в волну трендов постится популярное (нужного рейтинга) с пометкой 🔥', async (t) => {
+    randomSequence(t, [0.99]);
+    const config = testConfig();
+    config.autopost.trends = trends;
+    const deps = setup({ config });
+    assert.equal(await autopostOnce({ ...deps, now: new Date(1 * H) }), 'posted');
+    assert.deepEqual(deps.client.calls[0], ['popular', { scale: 'day' }]);
+    assert.ok(!deps.client.calls.some(c => c[0] === 'posts'));
+    assert.equal(deps.telegram.calls.length, 1);
+});
+
+test('вне волны — обычный пост; тренды кончились — тоже обычный', async (t) => {
+    randomSequence(t, [0.99]);
+    const config = testConfig();
+    config.autopost.trends = trends;
+
+    const normal = setup({ config });
+    await autopostOnce({ ...normal, now: new Date(5 * H) });
+    assert.ok(!normal.client.calls.some(c => c[0] === 'popular'));
+
+    const client = fakeClient({ popular: async () => [], posts: async (p) => (p.tags.includes('order:rank') ? [] : [makePost()]) });
+    const exhausted = setup({ client, config });
+    assert.equal(await autopostOnce({ ...exhausted, now: new Date(1 * H) }), 'posted');
+});

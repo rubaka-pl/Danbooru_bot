@@ -24,7 +24,8 @@ export const config = {
     },
 
     search: {
-        counts: [1, 3, 5, 10],
+        counts: [1, 3, 5, 10, 20, 30],
+        albumFrom: 10,       // с такого количества картинки идут альбомами по 10 (если включено в /settings)
         maxGroups: 10,       // максимум строк (отдельных поисков) в одном сообщении
         maxTermsPerGroup: 6, // максимум тегов в одной строке
         sendDelayMs: 1200,   // пауза между картинками, чтобы не упереться в лимиты Telegram
@@ -43,6 +44,13 @@ export const config = {
         albumSize: [5, 10],
         // Примерно каждый N-й автопост — «⚔️ Битва артов» с опросом (0 — выкл.)
         battleEvery: toInt(env.BATTLE_EVERY, 25),
+        // Волны трендов: TREND_HOURS часов — популярное на Danbooru за день/неделю,
+        // потом TREND_PAUSE_HOURS часов — обычные посты, и снова по кругу. TRENDS=off — выкл.
+        trends: {
+            enabled: (env.TRENDS || 'on').toLowerCase() !== 'off',
+            hours: Number.parseFloat(env.TREND_HOURS ?? '4'),
+            pauseHours: Number.parseFloat(env.TREND_PAUSE_HOURS ?? '2')
+        },
         // Доля постов, подобранных по статистике реакций в канале (0..1)
         adaptiveShare: Number.parseFloat(env.ADAPTIVE_SHARE ?? '0.4'),
         historyFile: path.resolve(env.HISTORY_FILE || './data/sent_images.json'),

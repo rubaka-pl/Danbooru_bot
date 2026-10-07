@@ -133,7 +133,7 @@ test('enforceSafe и isAdult', () => {
 
 test('настройки и очки викторины в хранилище', async () => {
     const { settings, quiz } = createUserData(new MemoryStore());
-    assert.deepEqual(await settings.get(1), { rating: 'general', count: 3, quick: false, safe: false, albums: true, hide: [] });
+    assert.deepEqual(await settings.get(1), { rating: 'general', count: 3, quick: false, safe: false, albums: true, source: 'danbooru', hide: [] });
     await settings.update(1, { quick: true });
     assert.equal((await settings.get(1)).quick, true);
 

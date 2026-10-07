@@ -98,6 +98,15 @@ export function postKeyboard(post, baseUrl = 'https://danbooru.donmai.us') {
     ]);
 }
 
+/** Кнопки под картинкой с другой борды: только ссылки (❤️, похожие и т.п. работают с Danbooru). */
+export function foreignPostKeyboard(post, client) {
+    const original = originalUrl(post, client.baseUrl);
+    return Markup.inlineKeyboard([[
+        ...(original ? [Markup.button.url('🖼 View original', original)] : []),
+        Markup.button.url(`🔗 ${client.name}`, client.postUrl(post.id))
+    ]]);
+}
+
 /** Кнопка под постом в канале (в каналах работают только URL-кнопки). */
 export function channelKeyboard(post, baseUrl = 'https://danbooru.donmai.us') {
     const original = originalUrl(post, baseUrl);

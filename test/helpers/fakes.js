@@ -142,7 +142,7 @@ export function mockTelegram(responder) {
 }
 
 /** Собирает бота с фейковыми зависимостями. */
-export function createTestBot({ client = fakeClient(), config = testConfig() } = {}) {
+export function createTestBot({ client = fakeClient(), config = testConfig(), boorus } = {}) {
     resetChatState();
     const tasks = [];
     const store = new MemoryStore();
@@ -150,12 +150,12 @@ export function createTestBot({ client = fakeClient(), config = testConfig() } =
     const userData = createUserData(store);
     const channelStats = createChannelStats(store);
     const runTask = (promise) => tasks.push(promise);
-    const runner = createSearchRunner({ client, config, userData, runTask });
+    const runner = createSearchRunner({ client, boorus, config, userData, runTask });
     const resolver = createTagResolver(client);
     let bot;
     const alerts = createAlerts({ getTelegram: () => bot.telegram, config });
     const health = createHealth();
-    const deps = { config, client, resolver, history, store, userData, channelStats, runner, runTask, alerts, health };
+    const deps = { config, client, boorus, resolver, history, store, userData, channelStats, runner, runTask, alerts, health };
     bot = createBot(deps);
     bot.botInfo = { id: 1, is_bot: true, username: 'test_bot', first_name: 'Test' };
 

@@ -48,7 +48,7 @@ export async function sendPost(telegram, chatId, post, { client, userAgent, quer
 
     const method = METHODS[media.type];
     const options = {
-        caption: caption ?? buildCaption(post, { postUrl: client.postUrl(post.id), query, header, tagLink }),
+        caption: caption ?? buildCaption(post, { postUrl: client.postUrl(post.id), query, header, tagLink, siteName: client.name }),
         parse_mode: 'HTML',
         ...extra
     };
@@ -91,7 +91,7 @@ export async function sendAlbum(telegram, chatId, posts, { client, userAgent, he
         media: sources[index],
         parse_mode: 'HTML',
         caption: index === 0
-            ? buildCaption(post, { postUrl: client.postUrl(post.id), header, maxGeneralTags: 10, tagLink })
+            ? buildCaption(post, { postUrl: client.postUrl(post.id), header, maxGeneralTags: 10, tagLink, siteName: client.name })
             : buildCaption(post, { postUrl: client.postUrl(post.id), compact: true, tagLink })
     }));
 

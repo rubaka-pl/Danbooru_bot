@@ -11,10 +11,17 @@ function hideRows(hidden) {
     return chunk(buttons, 2);
 }
 
-export function settingsView(settings, counts) {
+/**
+ * @param {Object<string, {name: string}>} [sources] — доступные борды (id → клиент)
+ */
+export function settingsView(settings, counts, boorus = {}) {
+    const sources = { danbooru: { name: 'Danbooru' }, ...boorus };
+    const sourceIds = Object.keys(sources);
+    const sourceName = sources[settings.source]?.name ?? 'Danbooru';
     const text = [
         '⚙️ <b>Настройки</b>',
         '',
+        ...(sourceIds.length > 1 ? [`🌐 Источник: <b>${sourceName}</b> (подсказки, ❤️ и «похожие» — всегда с Danbooru)`] : []),
         `Рейтинг по умолчанию: ${ratingLabel(settings.rating)}`,
         `Картинок за раз (быстрый режим, 💡 и ✨): ${settings.count}`,
         `⚡ Быстрый режим — искать сразу, без вопроса «сколько»: ${onOff(settings.quick)}`,
@@ -34,6 +41,8 @@ export function settingsView(settings, counts) {
         extra: {
             parse_mode: 'HTML',
             ...Markup.inlineKeyboard([
+                ...chunk(sourceIds.map(id => Markup.button.callback(
+                    `${sources[id].name === sourceName ? '✅ ' : ''}${sources[id].name}`, `set:source:${id}`)), 3),
                 ratingRow.slice(0, 2),
                 ratingRow.slice(2),
                 ...chunk(countButtons, 3),
@@ -49,15 +58,16 @@ export function settingsView(settings, counts) {
 /**
  * /settings — рейтинг и количество по умолчанию, быстрый и безопасный режимы.
  */
-export function registerSettings(bot, { userData, config }) {
+export function registerSettings(bot, { userData, config, boorus = {} }) {
     const { counts } = config.search;
+    const view = (settings) => settingsView(settings, counts, boorus);
 
     bot.command('settings', async (ctx) => {
-        const { text, extra } = settingsView(await userData.settings.get(ctx.chat.id), counts);
+        const { text, extra } = view(await userData.settings.get(ctx.chat.id));
         await ctx.reply(text, extra);
     });
 
-    bot.action(/^set:(rating|count|quick|safe|albums|hide)(?::(\w+))?$/, async (ctx) => {
+    bot.action(/^set:(rating|count|quick|safe|albums|source|hide)(?::(\w+))?$/, async (ctx) => {
         const [, field, value] = ctx.match;
         const current = await userData.settings.get(ctx.chat.id);
         let patch;
@@ -66,6 +76,7 @@ export function registerSettings(bot, { userData, config }) {
         else if (field === 'quick') patch = { quick: !current.quick };
         else if (field === 'safe') patch = { safe: !current.safe };
         else if (field === 'albums') patch = { albums: !current.albums };
+        else if (field === 'source' && (value === 'danbooru' || boorus[value])) patch = { source: value };
         else if (field === 'hide' && HIDE_PRESETS[value]) {
             const hide = current.hide ?? [];
             patch = { hide: hide.includes(value) ? hide.filter(k => k !== value) : [...hide, value] };
@@ -74,7 +85,7 @@ export function registerSettings(bot, { userData, config }) {
 
         const next = await userData.settings.update(ctx.chat.id, patch);
         await ctx.answerCbQuery('✅ Сохранено');
-        const { text, extra } = settingsView(next, counts);
+        const { text, extra } = view(next);
         await ctx.editMessageText(text, extra).catch(() => {});
     });
 }

@@ -137,6 +137,8 @@ Blueprint сам включает **Health Check** на `/health`: если бо
 | `LOG_UPDATES` | нет | `on` | `off` — не писать в лог строку на каждое сообщение |
 | `DANBOORU_LOGIN`, `DANBOORU_API_KEY` | нет | — | аккаунт Danbooru (больше тегов в запросе) |
 | `DANBOORU_TAG_LIMIT` | нет | `2` | 6 для Gold, 12 для Platinum |
+| `GELBOORU_API_KEY`, `GELBOORU_USER_ID` | нет | — | ключ Gelbooru (без него может упираться в лимиты). Аккаунт → My Account → Options → API Access Credentials |
+| `RULE34_API_KEY`, `RULE34_USER_ID` | для Rule34 | — | без ключа Rule34 не появится в `/settings` → «Источник». Ключ: rule34.xxx → My Account → Options |
 
 ## Если что-то не работает
 

@@ -1,5 +1,6 @@
 import { config } from './config.js';
 import { createDanbooruClient } from './services/danbooru.js';
+import { createBooruClients } from './services/boorus.js';
 import { createTagResolver } from './services/tagResolver.js';
 import { FileHistory, MemoryHistory, RedisHistory } from './services/history.js';
 import { CachedStore, FileStore, MemoryStore, RedisStore } from './services/store.js';
@@ -22,6 +23,7 @@ export function createApp({ serverless = false, runTask = (p) => p.catch(console
     }
 
     const client = createDanbooruClient(config.danbooru);
+    const boorus = createBooruClients(client, { userAgent: config.danbooru.userAgent, keys: config.boorus });
     const resolver = createTagResolver(client);
     const hasRedis = Boolean(config.redis.url && config.redis.token);
 
@@ -41,13 +43,13 @@ export function createApp({ serverless = false, runTask = (p) => p.catch(console
 
     const userData = createUserData(store);
     const channelStats = createChannelStats(store);
-    const runner = createSearchRunner({ client, config, userData, runTask });
+    const runner = createSearchRunner({ client, boorus, config, userData, runTask });
 
     let bot;
     const alerts = createAlerts({ getTelegram: () => bot.telegram, config });
     const health = createHealth();
 
-    const deps = { config, client, resolver, history, store, userData, channelStats, runner, runTask, alerts, health };
+    const deps = { config, client, boorus, resolver, history, store, userData, channelStats, runner, runTask, alerts, health };
     bot = createBot(deps);
 
     return { ...deps, bot };

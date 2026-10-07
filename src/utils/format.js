@@ -54,7 +54,7 @@ function namedLine(icon, title, tags, max, tagLink) {
  * @param {(tag: string) => string|null} [options.tagLink] — теги станут ссылками
  *   (в личке бота: клик переключает ленту), иначе — обычные хэштеги
  */
-export function buildCaption(post, { postUrl, query, header, compact = false, maxGeneralTags = 25, tagLink } = {}) {
+export function buildCaption(post, { postUrl, query, header, compact = false, maxGeneralTags = 25, tagLink, siteName = 'Danbooru' } = {}) {
     if (compact) {
         // Короткая подпись для картинок внутри альбома
         const artist = splitTags(post.tag_string_artist)[0];
@@ -75,7 +75,7 @@ export function buildCaption(post, { postUrl, query, header, compact = false, ma
         post.created_at && `📅 Дата: ${post.created_at.split('T')[0]}`
     ].filter(Boolean);
 
-    const footer = postUrl ? `🔗 <a href="${escapeHtml(postUrl)}">Открыть на Danbooru</a>` : '';
+    const footer = postUrl ? `🔗 <a href="${escapeHtml(postUrl)}">Открыть на ${escapeHtml(siteName)}</a>` : '';
 
     // Общие теги добавляем, пока влезают в лимит
     const general = splitTags(post.tag_string_general)

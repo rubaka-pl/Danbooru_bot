@@ -62,33 +62,39 @@ export function adultAutopostDeps(deps) {
 const HOUR = 60 * 60 * 1000;
 export const TREND_WAVE_KEY = 'autopost:trendWave';
 
+export const PHASE_LABELS = { fresh: '🆕 свежак', mix: '🎲 вразнобой', packs: '🗂 паки' };
+
 /**
- * Текущая волна трендов или null. Цикл «hours волна → pauseHours без трендов»
- * считается от времени — одинаково на Render и Vercel.
- * @returns {{ index: number, endsAt: number } | null}
+ * Фаза автопоста по расписанию, например «2 ч свежак → 1 ч вразнобой → 1 ч паки» по кругу.
+ * Считается от времени — одинаково на Render и Vercel.
+ * @param {Array<{ name: string, hours: number }>|null} schedule
+ * @returns {{ name: string, index: number, endsAt: number } | null} null — расписание выключено
  */
-export function trendWave(now, trends) {
-    if (!trends?.enabled || !(trends.hours > 0)) return null;
-    const cycle = (trends.hours + Math.max(trends.pauseHours, 0)) * HOUR;
+export function currentPhase(now, schedule) {
+    if (!schedule?.length) return null;
+    const cycle = schedule.reduce((sum, phase) => sum + phase.hours, 0) * HOUR;
     const time = now.getTime();
-    if (time % cycle >= trends.hours * HOUR) return null;
-    const index = Math.floor(time / cycle);
-    return { index, endsAt: index * cycle + trends.hours * HOUR };
+    const round = Math.floor(time / cycle);
+    let start = round * cycle;
+    for (const [i, phase] of schedule.entries()) {
+        const end = start + phase.hours * HOUR;
+        if (time < end || i === schedule.length - 1) {
+            return { name: phase.name, index: round * schedule.length + i, endsAt: end };
+        }
+        start = end;
+    }
 }
 
-export const isTrendTime = (now, trends) => trendWave(now, trends) !== null;
-
-// Счётчик трендов волны, если хранилища нет (тесты, /api без Redis)
+// Счётчик трендов фазы, если хранилища нет (тесты, /api без Redis)
 let memoryWave = { index: -1, count: 0 };
 
 /**
- * Пора ли поставить тренд: за волну — perWave штук, равномерно вперемешку
- * с обычными постами (шанс = осталось трендов / осталось автопостов до конца волны).
+ * Пора ли поставить тренд: за фазу «свежак» — perWave штук, равномерно вперемешку
+ * со свежими постами (шанс = осталось трендов / осталось автопостов до конца фазы).
  */
-async function trendDue({ store, config, now }) {
+async function trendDue({ store, config, now }, wave) {
     const { trends, intervalMs } = config.autopost;
-    const wave = trendWave(now, trends);
-    if (!wave || !(trends.perWave > 0)) return null;
+    if (wave?.name !== 'fresh' || !trends?.enabled || !(trends.perWave > 0)) return null;
     const saved = (store ? await store.get(TREND_WAVE_KEY).catch(() => null) : memoryWave) ?? {};
     const count = saved.index === wave.index ? saved.count : 0;
     if (count >= trends.perWave) return null;
@@ -138,9 +144,11 @@ async function remember({ history, channelStats }, message, post) {
 }
 
 /**
- * Один автопост в канал: обычно одна картинка, иногда альбом.
- * Часть постов подбирается по тегам, которые собирают больше всего реакций.
- * Во время волны трендов (см. trendWave) — иногда популярное на Danbooru.
+ * Один автопост в канал. Что постить, зависит от фазы расписания (см. currentPhase):
+ *  - fresh (свежак) — арты за последние дни, вперемешку с трендами Danbooru;
+ *  - mix (вразнобой) — лучшие арты за все годы, по реакциям канала, иногда альбом или битва;
+ *  - packs (паки) — в основном альбомы 5–10 картинок на одну тему.
+ * Без расписания — всегда mix.
  * @param {boolean} [deps.force] — игнорировать паузу и тихие часы (команда /post)
  * @returns {Promise<'posted'|'album'|'battle'|'quiet'|'paused'|'empty'>}
  */
@@ -158,7 +166,9 @@ export async function autopostOnce(deps) {
     // Примерно каждый N-й пост — sensitive (случайно, чтобы работало и без состояния);
     // у 18+ канала рейтинг задан в настройках
     const rating = autopost.rating ?? (Math.random() < 1 / autopost.sensitiveEvery ? 'sensitive' : 'general');
-    const countTrend = await trendDue({ store, config, now });
+    const phase = currentPhase(now, autopost.schedule);
+    const mode = phase?.name ?? 'mix';
+    const countTrend = await trendDue({ store, config, now }, phase);
     if (countTrend) {
         const result = await postTrending(deps, rating);
         if (result) {
@@ -174,15 +184,20 @@ export async function autopostOnce(deps) {
     const search = (tags, count) => findPosts(client, { tags, rating, count, skip, tagLimit: danbooru.tagLimit });
     const userAgent = danbooru.userAgent;
 
-    const likedTag = Math.random() < autopost.adaptiveShare ? await channelStats?.pickLikedTag() : null;
+    // Свежак: арты за последние fresh.days дней, уже набравшие немного лайков
+    const since = new Date(now.getTime() - autopost.fresh.days * 24 * HOUR).toISOString().slice(0, 10);
+    const latestTags = [`date:>=${since}`, `score:>${autopost.fresh.minScore}`].map(name => ({ name, meta: true, postCount: 0 }));
 
-    const wantBattle = autopost.battleEvery > 0 && Math.random() < 1 / autopost.battleEvery;
+    const likedTag = mode !== 'fresh' && Math.random() < autopost.adaptiveShare ? await channelStats?.pickLikedTag() : null;
+
+    const wantBattle = mode === 'mix' && autopost.battleEvery > 0 && Math.random() < 1 / autopost.battleEvery;
     if (wantBattle) {
         const result = await postBattle({ ...deps, search, defaultTags, themed, likedTag });
         if (result) return result;
     }
 
-    const wantAlbum = autopost.albumEvery > 0 && Math.random() < 1 / autopost.albumEvery;
+    const albumEvery = { mix: autopost.albumEvery, packs: autopost.packEvery }[mode] ?? 0;
+    const wantAlbum = albumEvery > 0 && Math.random() < 1 / albumEvery;
 
     if (wantAlbum) {
         const [min, max] = autopost.albumSize;
@@ -200,21 +215,23 @@ export async function autopostOnce(deps) {
                 const sent = await sendAlbum(telegram, autopost.channelId, posts, { client, userAgent, header });
                 if (sent.length) {
                     for (const { message, post } of sent) await remember(deps, message, post);
-                    console.log(`✅ Автопост: альбом «${theme}» из ${sent.length} (${rating})`);
+                    console.log(`✅ Автопост: альбом «${theme}» из ${sent.length} (${rating}, ${mode})`);
                     return 'album';
                 }
             }
         }
     }
 
-    const queries = likedTag ? [themed(likedTag), defaultTags] : [defaultTags];
+    // Свежего не нашлось — постим как обычно
+    const queries = mode === 'fresh' ? [latestTags, defaultTags] : likedTag ? [themed(likedTag), defaultTags] : [defaultTags];
     for (const tags of queries) {
         const posts = await freshPosts(await search(tags, 1), history, 5);
+        const header = tags === latestTags ? '🆕 <b>Свежее</b>' : undefined;
         for (const post of posts) {
-            const message = await sendPost(telegram, autopost.channelId, post, { client, userAgent, extra: channelKeyboard(post, client.baseUrl) });
+            const message = await sendPost(telegram, autopost.channelId, post, { client, userAgent, header, extra: channelKeyboard(post, client.baseUrl) });
             if (!message) continue;
             await remember(deps, message, post);
-            console.log(`✅ Автопост: пост ${post.id} (${rating}${likedTag ? `, по реакциям: ${likedTag}` : ''})`);
+            console.log(`✅ Автопост: пост ${post.id} (${rating}, ${tags === latestTags ? 'свежак' : mode}${likedTag ? `, по реакциям: ${likedTag}` : ''})`);
             return 'posted';
         }
     }

@@ -23,6 +23,8 @@ const moePost = (id, extra = {}) => ({
 
 test('translateTags: рейтинг и random в синтаксисе каждой борды', () => {
     assert.deepEqual(translateTags(['miku', 'rating:e'], BOORUS.gelbooru, { random: true }), ['miku', 'rating:explicit', 'sort:random']);
+    assert.deepEqual(translateTags(['cat_ears', '-glasses', 'miku'], BOORUS.yandere, { random: false }), ['nekomimi', '-megane', 'miku']);
+    assert.deepEqual(translateTags(['cat_ears'], BOORUS.konachan, { random: false }), ['cat_ears']);
     assert.deepEqual(translateTags(['miku', 'rating:g'], BOORUS.konachan, { random: true }), ['miku', 'rating:s', 'order:random']);
     assert.deepEqual(translateTags(['miku', 'rating:s'], BOORUS.yandere, { random: false }), ['miku', 'rating:q']);
 });
@@ -63,6 +65,11 @@ test('клиент Gelbooru: запрос без ключа, страницы, �
 
     assert.deepEqual(await client.posts({ tags: ['nothing'] }), []);
     await assert.rejects(client.posts({ tags: ['x'] }), /Gelbooru: HTTP 503/);
+
+    const keyed = createBooruClient('gelbooru', { userAgent: UA, fetchImpl, credentials: { apiKey: 'k', userId: '5' } });
+    await keyed.posts({ tags: ['x'] });
+    assert.equal(calls.at(-1).searchParams.get('api_key'), 'k');
+    assert.equal(calls.at(-1).searchParams.get('user_id'), '5');
 });
 
 test('клиент Konachan: post.json и пост по id', async () => {
@@ -115,6 +122,33 @@ test('/settings → источник Konachan: поиск идёт туда, к�
     assert.ok(buttons.every(b => b.url));
     assert.ok(buttons.some(b => b.url === 'https://konachan.com/post/show/101'));
     assert.match(tg.calls('sendMessage').find(m => /Ищу/.test(m.payload.text)).payload.text, /на Konachan/);
+});
+
+test('борда не пускает бота (HTTP 403) → предупреждение и поиск на Danbooru', async () => {
+    net = mockFetch(async () => new Response('Forbidden', { status: 403 }));
+    const boorus = { konachan: createBooruClient('konachan', { userAgent: UA }) };
+    const t = createTestBot({ boorus });
+    await t.userData.settings.update(42, { source: 'konachan' });
+
+    await t.click('s:general:3', { text: '🔹 hatsune_miku (100k)\nРейтинг: 🟢 Safe' });
+    await t.settle();
+    assert.ok(tg.calls('sendMessage').some(m => /Konachan сейчас не пускает бота \(Konachan: HTTP 403\) — ищу на Danbooru/.test(m.payload.text)));
+    assert.ok(t.client.calls.some(([m]) => m === 'posts'));
+    assert.equal(tg.calls('sendPhoto').length, 3);
+    assert.match(tg.calls('sendPhoto')[0].payload.caption, /Открыть на Danbooru/);
+});
+
+test('на другой борде пусто → добирает с Danbooru', async () => {
+    net = mockFetch(async () => jsonResponse([]));
+    const boorus = { yandere: createBooruClient('yandere', { userAgent: UA }) };
+    const t = createTestBot({ boorus });
+    await t.userData.settings.update(42, { source: 'yandere' });
+
+    await t.click('s:general:3', { text: '🔹 hatsune_miku (100k)\nРейтинг: 🟢 Safe' });
+    await t.settle();
+    assert.ok(tg.calls('sendMessage').some(m => /На Yande.re по <code>hatsune_miku<\/code> ничего — ищу на Danbooru/.test(m.payload.text)));
+    assert.equal(tg.calls('sendPhoto').length, 3);
+    assert.match(tg.calls('sendPhoto')[0].payload.caption, /Открыть на Danbooru/);
 });
 
 test('на другой борде неизвестный Danbooru тег уходит в поиск как есть', async () => {

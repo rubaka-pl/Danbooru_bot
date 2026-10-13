@@ -1,7 +1,7 @@
 import { DanbooruError } from './danbooru.js';
 
 /*
- * Другие борды: Gelbooru и Moebooru (Konachan, Yande.re). Ключи не нужны.
+ * Другие борды: Gelbooru и Moebooru (Konachan, Yande.re). Ключ нужен только Gelbooru (если он его требует).
  * Посты приводятся к формату Danbooru, чтобы поиск,
  * фильтры и отправка работали без изменений. Категорий тегов (автор/персонаж)
  * у этих API нет — все теги идут в общий список.
@@ -20,10 +20,17 @@ const TO_DANBOORU_RATING = {
     s: 'g', q: 'q', e: 'e'
 };
 
+// Теги Danbooru, которые на Yande.re называются иначе
+const YANDERE_ALIASES = {
+    cat_ears: 'nekomimi', cat_girl: 'nekomimi', fox_ears: 'kitsunemimi', school_uniform: 'seifuku',
+    serafuku: 'seifuku', glasses: 'megane', panties: 'pantsu', nude: 'naked', completely_nude: 'naked',
+    swimsuit: 'swimsuits', 'one-piece_swimsuit': 'swimsuits'
+};
+
 export const BOORUS = {
     gelbooru: { name: 'Gelbooru', kind: 'gelbooru', baseUrl: 'https://gelbooru.com', ratings: GELBOORU_RATINGS, tagLimit: 10 },
     konachan: { name: 'Konachan', kind: 'moebooru', baseUrl: 'https://konachan.com', ratings: MOEBOORU_RATINGS, tagLimit: 6 },
-    yandere: { name: 'Yande.re', kind: 'moebooru', baseUrl: 'https://yande.re', ratings: MOEBOORU_RATINGS, tagLimit: 6 }
+    yandere: { name: 'Yande.re', kind: 'moebooru', baseUrl: 'https://yande.re', ratings: MOEBOORU_RATINGS, tagLimit: 6, aliases: YANDERE_ALIASES }
 };
 
 const extOf = (name = '') => name.split('?')[0].split('.').pop()?.toLowerCase() ?? '';
@@ -43,7 +50,9 @@ export function translateTags(tags, site, { random }) {
             out.push(`${rating[1]}rating:${site.ratings[rating[2]]}`);
             continue;
         }
-        out.push(tag);
+        const negated = tag.startsWith('-') ? '-' : '';
+        const name = tag.slice(negated.length);
+        out.push(negated + (site.aliases?.[name] ?? name));
     }
     if (random) out.push(site.kind === 'moebooru' ? 'order:random' : 'sort:random');
     return out;
@@ -110,7 +119,7 @@ export function normalizeMoebooruPost(raw, site) {
  * Клиент другой борды с тем же интерфейсом поиска, что у Danbooru.
  * @param {string} id — ключ из BOORUS
  */
-export function createBooruClient(id, { userAgent, timeout = 15000, fetchImpl } = {}) {
+export function createBooruClient(id, { userAgent, timeout = 15000, fetchImpl, credentials } = {}) {
     const site = BOORUS[id];
     if (!site) throw new Error(`Неизвестная борда: ${id}`);
     const doFetch = fetchImpl ?? ((...args) => globalThis.fetch(...args));
@@ -139,7 +148,9 @@ export function createBooruClient(id, { userAgent, timeout = 15000, fetchImpl } 
 
     async function gelbooruPosts(params) {
         const url = new URL('/index.php', site.baseUrl);
-        url.search = new URLSearchParams({ page: 'dapi', s: 'post', q: 'index', json: '1', ...params }).toString();
+        // Gelbooru может требовать ключ: My Account → Options → API Access Credentials
+        const auth = credentials?.apiKey && credentials?.userId ? { api_key: credentials.apiKey, user_id: credentials.userId } : {};
+        url.search = new URLSearchParams({ page: 'dapi', s: 'post', q: 'index', json: '1', ...params, ...auth }).toString();
         const body = await request(url);
         // Gelbooru: { post: [...] }; без результатов поля post нет
         const list = Array.isArray(body) ? body : Array.isArray(body?.post) ? body.post : [];
@@ -188,8 +199,8 @@ export function createBooruClient(id, { userAgent, timeout = 15000, fetchImpl } 
 }
 
 /** Все клиенты: { danbooru, gelbooru, konachan, yandere }. Danbooru — основной. */
-export function createBooruClients(danbooruClient, { userAgent } = {}) {
+export function createBooruClients(danbooruClient, { userAgent, credentials = {} } = {}) {
     const clients = { danbooru: Object.assign(danbooruClient, { id: 'danbooru', name: 'Danbooru' }) };
-    for (const id of Object.keys(BOORUS)) clients[id] = createBooruClient(id, { userAgent });
+    for (const id of Object.keys(BOORUS)) clients[id] = createBooruClient(id, { userAgent, credentials: credentials[id] });
     return clients;
 }

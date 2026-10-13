@@ -145,25 +145,46 @@ export function createSearchRunner({ client, boorus = {}, config, userData, runT
         }
         const skip = await skipFor(chatId);
         const albums = settings.albums && count >= albumFrom;
-        const source = sourceFor(settings);
-        const where = source === client ? '' : ` на ${source.name}`;
-        const progress = await telegram.sendMessage(chatId, `🔍 Ищу${where}… (${ratingLabel(rating)})`, SILENT);
+        let source = sourceFor(settings);
+        const where = (from) => (from === client ? '' : ` на ${from.name}`);
+        const progress = await telegram.sendMessage(chatId, `🔍 Ищу${where(source)}… (${ratingLabel(rating)})`, SILENT);
+        const search = (from, tags) => findPosts(from, { tags, rating, count, tagLimit: from.tagLimit ?? tagLimit, skip, limit: skip.strict ? 200 : undefined });
 
         try {
             for (const tags of groups) {
                 const title = groupTitle(tags);
-                const posts = await findPosts(source, { tags, rating, count, tagLimit: source.tagLimit ?? tagLimit, skip, limit: skip.strict ? 200 : undefined });
+                let from = source;
+                let posts;
+                try {
+                    posts = await search(from, tags);
+                } catch (error) {
+                    // Другая борда не пускает бота (Cloudflare, нужен ключ, лежит) — дальше ищем на Danbooru
+                    if (from === client) throw error;
+                    console.warn(`⚠️ ${from.name} недоступен, ищу на Danbooru: ${error.message}`);
+                    await telegram.sendMessage(chatId,
+                        `⚠️ ${from.name} сейчас не пускает бота (${error.message}) — ищу на Danbooru.\nСменить источник: /settings`);
+                    source = from = client;
+                    posts = await search(from, tags);
+                }
+                if (!posts.length && from !== client) {
+                    // На другой борде теги называются иначе или артов нет — добираем с Danbooru
+                    await telegram.sendMessage(chatId,
+                        `🤷 На ${from.name} по <code>${escapeHtml(title)}</code> ничего — ищу на Danbooru.`,
+                        { parse_mode: 'HTML', ...SILENT });
+                    from = client;
+                    posts = await search(from, tags);
+                }
                 const sent = await sendResults(telegram, chatId, posts, count, {
                     query: groups.length > 1 ? title.replace(/_/g, ' ') : undefined,
                     header,
                     rating,
                     albums,
-                    source
+                    source: from
                 });
 
                 if (sent === 0) {
                     await telegram.sendMessage(chatId,
-                        `😔 По <code>${escapeHtml(title)}</code> ничего нового не нашлось${where} (${ratingLabel(rating)}).\n` +
+                        `😔 По <code>${escapeHtml(title)}</code> ничего нового не нашлось${where(from)} (${ratingLabel(rating)}).\n` +
                         'Попробуй другой рейтинг или убери часть тегов.',
                         { parse_mode: 'HTML' });
                 } else if (sent < count) {

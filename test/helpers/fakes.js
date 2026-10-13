@@ -111,7 +111,7 @@ export function testConfig(overrides = {}) {
     config.autopost.channelId = '@test_channel';
     config.adult.channelId = '@test_adult';
     config.autopost.quietHours = null;
-    config.autopost.trends.enabled = false; // волны трендов зависят от времени — в тестах выключены
+    config.autopost.schedule = null; // фазы зависят от времени — в тестах всегда «вразнобой»
     config.adminIds = [];
     config.logUpdates = false;
     return Object.assign(config, overrides);

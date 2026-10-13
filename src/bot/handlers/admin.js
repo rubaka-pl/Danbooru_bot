@@ -1,5 +1,5 @@
 import { Markup } from 'telegraf';
-import { adultAutopostDeps, autopostOnce, PAUSED_KEY } from '../../services/autopost.js';
+import { adultAutopostDeps, autopostOnce, currentPhase, PAUSED_KEY, PHASE_LABELS } from '../../services/autopost.js';
 import { runRecapIfDue } from '../../services/recap.js';
 import { isQuietTime } from '../../utils/quietHours.js';
 import { escapeHtml, humanizeTag } from '../../utils/format.js';
@@ -27,12 +27,15 @@ export function registerAdmin(bot, deps) {
         const { quietHours, timeZone, channelId } = config.autopost;
         const quiet = quietHours && isQuietTime(new Date(), { ...quietHours, timeZone });
         const subsChats = (await userData.subscriptions.chats()).length;
+        const phase = currentPhase(new Date(), config.autopost.schedule);
+        const until = phase && new Intl.DateTimeFormat('ru-RU', { timeZone, hour: '2-digit', minute: '2-digit' }).format(new Date(phase.endsAt));
         const top = await channelStats.top(3);
         const text = [
             '🛠 <b>Админка</b>',
             '',
             `📡 Канал: ${escapeHtml(String(channelId))}`,
             config.adult.enabled && config.adult.channelId && `🔞 18+: ${escapeHtml(String(config.adult.channelId))}`,
+            phase && `🔄 Сейчас: ${PHASE_LABELS[phase.name]} (до ${until})`,
             `Автопост: ${!config.autopost.enabled ? '⛔ выключен (AUTOPOST=off)' : paused ? '⏸ на паузе' : quiet ? '🌙 тихие часы' : '▶️ работает'}`,
             `🔔 Чатов с подписками: ${subsChats}`,
             top.length && `📊 Лучше всего заходят: ${top.map(t => escapeHtml(humanizeTag(t.tag))).join(', ')}`

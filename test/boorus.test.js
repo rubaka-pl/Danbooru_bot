@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestBot, jsonResponse, mockFetch, mockTelegram } from './helpers/fakes.js';
-import { BOORUS, createBooruClient, createBooruClients, normalizeGelbooruPost, normalizeMoebooruPost, translateTags } from '../src/services/boorus.js';
+import { BOORUS, createBooruClient, createBooruClients, normalizeGelbooruPost, translateTags } from '../src/services/boorus.js';
 import { pickMedia } from '../src/utils/posts.js';
 
 const UA = 'test';
@@ -14,22 +14,12 @@ const gelPost = (id, extra = {}) => ({
     tags: ' 1girl hatsune_miku maid ', created_at: 'Sat Oct 05 12:00:00 -0500 2024', source: '', ...extra
 });
 
-const moePost = (id, extra = {}) => ({
-    id, md5: `k${id}`, rating: 's', score: 50, width: 1920, height: 1080, file_size: 3_000_000, file_ext: 'png',
-    file_url: `https://konachan.com/image/k${id}.png`, jpeg_url: `https://konachan.com/jpeg/k${id}.jpg`,
-    sample_url: `https://konachan.com/sample/k${id}.jpg`, preview_url: `https://konachan.com/preview/k${id}.jpg`,
-    tags: 'hatsune_miku vocaloid', created_at: 1_700_000_000, source: '', ...extra
-});
-
 test('translateTags: рейтинг и random в синтаксисе каждой борды', () => {
     assert.deepEqual(translateTags(['miku', 'rating:e'], BOORUS.gelbooru, { random: true }), ['miku', 'rating:explicit', 'sort:random']);
-    assert.deepEqual(translateTags(['cat_ears', '-glasses', 'miku'], BOORUS.yandere, { random: false }), ['nekomimi', '-megane', 'miku']);
-    assert.deepEqual(translateTags(['cat_ears'], BOORUS.konachan, { random: false }), ['cat_ears']);
-    assert.deepEqual(translateTags(['miku', 'rating:g'], BOORUS.konachan, { random: true }), ['miku', 'rating:s', 'order:random']);
-    assert.deepEqual(translateTags(['miku', 'rating:s'], BOORUS.yandere, { random: false }), ['miku', 'rating:q']);
+    assert.deepEqual(translateTags(['miku', '-rating:s'], BOORUS.gelbooru, { random: false }), ['miku', '-rating:sensitive']);
 });
 
-test('нормализация постов Gelbooru / Moebooru в формат Danbooru', () => {
+test('нормализация постов Gelbooru в формат Danbooru', () => {
     const g = normalizeGelbooruPost(gelPost(1), BOORUS.gelbooru);
     assert.equal(g.rating, 'g');
     assert.equal(g.file_ext, 'jpg');
@@ -39,10 +29,6 @@ test('нормализация постов Gelbooru / Moebooru в формат 
 
     assert.equal(normalizeGelbooruPost(gelPost(2, { rating: 'explicit' }), BOORUS.gelbooru).rating, 'e');
 
-    const k = normalizeMoebooruPost(moePost(2, { rating: 'e' }), BOORUS.konachan);
-    assert.equal(k.rating, 'e');
-    assert.equal(k.large_file_url, 'https://konachan.com/sample/k2.jpg');
-    assert.equal(normalizeMoebooruPost(moePost(3, { rating: 'q' }), BOORUS.yandere).rating, 'q');
 });
 
 test('клиент Gelbooru: запрос без ключа, страницы, пустой ответ, ошибка', async () => {
@@ -72,23 +58,22 @@ test('клиент Gelbooru: запрос без ключа, страницы, �
     assert.equal(calls.at(-1).searchParams.get('user_id'), '5');
 });
 
-test('клиент Konachan: post.json и пост по id', async () => {
-    const urls = [];
-    const client = createBooruClient('konachan', {
-        userAgent: UA,
-        fetchImpl: async (url) => { urls.push(new URL(url)); return jsonResponse([moePost(9)]); }
+test('Gelbooru: 429 — одна повторная попытка, второй 429 — ошибка', async () => {
+    let calls = 0;
+    const flaky = createBooruClient('gelbooru', {
+        userAgent: UA, retryDelayMs: 0,
+        fetchImpl: async () => (++calls === 1 ? new Response('slow down', { status: 429 }) : jsonResponse({ post: [gelPost(5)] }))
     });
-    await client.posts({ tags: ['miku', 'rating:e'], random: true, limit: 20 });
-    assert.equal(urls[0].pathname, '/post.json');
-    assert.equal(urls[0].searchParams.get('tags'), 'miku rating:e order:random');
-    assert.equal((await client.post(9)).id, 9);
-    assert.equal(urls[1].searchParams.get('tags'), 'id:9');
-    assert.equal(client.postUrl(9), 'https://konachan.com/post/show/9');
+    assert.equal((await flaky.posts({ tags: ['x'] }))[0].id, 5);
+    assert.equal(calls, 2);
+
+    const limited = createBooruClient('gelbooru', { userAgent: UA, retryDelayMs: 0, fetchImpl: async () => new Response('', { status: 429 }) });
+    await assert.rejects(limited.posts({ tags: ['x'] }), /Gelbooru: HTTP 429/);
 });
 
-test('источники: Danbooru (основной), Gelbooru, Konachan, Yande.re', () => {
+test('источники: Danbooru (основной) и Gelbooru', () => {
     const clients = createBooruClients({ baseUrl: 'x' }, { userAgent: UA });
-    assert.deepEqual(Object.keys(clients), ['danbooru', 'gelbooru', 'konachan', 'yandere']);
+    assert.deepEqual(Object.keys(clients), ['danbooru', 'gelbooru']);
     assert.equal(clients.danbooru.name, 'Danbooru');
 });
 
@@ -99,40 +84,40 @@ let net;
 beforeEach(() => { tg = mockTelegram(); });
 afterEach(() => { tg.restore(); net?.restore(); net = null; });
 
-test('/settings → источник Konachan: поиск идёт туда, кнопки — ссылки, подпись с Konachan', async () => {
-    net = mockFetch(async () => jsonResponse([moePost(101), moePost(102), moePost(103)]));
-    const boorus = { konachan: createBooruClient('konachan', { userAgent: UA }) };
+test('/settings → источник Gelbooru: поиск идёт туда, кнопки — ссылки, подпись с Gelbooru', async () => {
+    net = mockFetch(async () => jsonResponse({ post: [gelPost(101), gelPost(102), gelPost(103)] }));
+    const boorus = { gelbooru: createBooruClient('gelbooru', { userAgent: UA }) };
     const t = createTestBot({ boorus });
 
     await t.text('/settings');
     const shown = tg.calls('sendMessage').at(-1).payload;
-    assert.ok(shown.reply_markup.inline_keyboard.flat().some(b => b.callback_data === 'set:source:konachan'));
-    await t.click('set:source:konachan');
-    assert.equal((await t.userData.settings.get(42)).source, 'konachan');
-    assert.match(tg.calls('editMessageText').at(-1).payload.text, /Источник: <b>Konachan/);
+    assert.ok(shown.reply_markup.inline_keyboard.flat().some(b => b.callback_data === 'set:source:gelbooru'));
+    await t.click('set:source:gelbooru');
+    assert.equal((await t.userData.settings.get(42)).source, 'gelbooru');
+    assert.match(tg.calls('editMessageText').at(-1).payload.text, /Источник: <b>Gelbooru/);
 
     await t.click('s:general:3', { text: '🔹 hatsune_miku (100k)\nРейтинг: 🟢 Safe' });
     await t.settle();
-    assert.ok(net.calls.every(c => c.url.startsWith('https://konachan.com/post.json')));
+    assert.ok(net.calls.every(c => c.url.startsWith('https://gelbooru.com/index.php')));
     assert.ok(!t.client.calls.some(([m]) => m === 'posts'));
     const photos = tg.calls('sendPhoto');
     assert.equal(photos.length, 3);
-    assert.match(photos[0].payload.caption, /Открыть на Konachan/);
+    assert.match(photos[0].payload.caption, /Открыть на Gelbooru/);
     const buttons = photos[0].payload.reply_markup.inline_keyboard.flat();
     assert.ok(buttons.every(b => b.url));
-    assert.ok(buttons.some(b => b.url === 'https://konachan.com/post/show/101'));
-    assert.match(tg.calls('sendMessage').find(m => /Ищу/.test(m.payload.text)).payload.text, /на Konachan/);
+    assert.ok(buttons.some(b => b.url === 'https://gelbooru.com/index.php?page=post&s=view&id=101'));
+    assert.match(tg.calls('sendMessage').find(m => /Ищу/.test(m.payload.text)).payload.text, /на Gelbooru/);
 });
 
 test('борда не пускает бота (HTTP 403) → предупреждение и поиск на Danbooru', async () => {
     net = mockFetch(async () => new Response('Forbidden', { status: 403 }));
-    const boorus = { konachan: createBooruClient('konachan', { userAgent: UA }) };
+    const boorus = { gelbooru: createBooruClient('gelbooru', { userAgent: UA }) };
     const t = createTestBot({ boorus });
-    await t.userData.settings.update(42, { source: 'konachan' });
+    await t.userData.settings.update(42, { source: 'gelbooru' });
 
     await t.click('s:general:3', { text: '🔹 hatsune_miku (100k)\nРейтинг: 🟢 Safe' });
     await t.settle();
-    assert.ok(tg.calls('sendMessage').some(m => /Konachan сейчас не пускает бота \(Konachan: HTTP 403\) — ищу на Danbooru/.test(m.payload.text)));
+    assert.ok(tg.calls('sendMessage').some(m => /Gelbooru сейчас не пускает бота \(Gelbooru: HTTP 403\) — ищу на Danbooru/.test(m.payload.text)));
     assert.ok(t.client.calls.some(([m]) => m === 'posts'));
     assert.equal(tg.calls('sendPhoto').length, 3);
     assert.match(tg.calls('sendPhoto')[0].payload.caption, /Открыть на Danbooru/);
@@ -140,22 +125,22 @@ test('борда не пускает бота (HTTP 403) → предупреж�
 
 test('на другой борде пусто → добирает с Danbooru', async () => {
     net = mockFetch(async () => jsonResponse([]));
-    const boorus = { yandere: createBooruClient('yandere', { userAgent: UA }) };
+    const boorus = { gelbooru: createBooruClient('gelbooru', { userAgent: UA }) };
     const t = createTestBot({ boorus });
-    await t.userData.settings.update(42, { source: 'yandere' });
+    await t.userData.settings.update(42, { source: 'gelbooru' });
 
     await t.click('s:general:3', { text: '🔹 hatsune_miku (100k)\nРейтинг: 🟢 Safe' });
     await t.settle();
-    assert.ok(tg.calls('sendMessage').some(m => /На Yande.re по <code>hatsune_miku<\/code> ничего — ищу на Danbooru/.test(m.payload.text)));
+    assert.ok(tg.calls('sendMessage').some(m => /На Gelbooru по <code>hatsune_miku<\/code> ничего — ищу на Danbooru/.test(m.payload.text)));
     assert.equal(tg.calls('sendPhoto').length, 3);
     assert.match(tg.calls('sendPhoto')[0].payload.caption, /Открыть на Danbooru/);
 });
 
 test('на другой борде неизвестный Danbooru тег уходит в поиск как есть', async () => {
-    net = mockFetch(async () => jsonResponse([moePost(201)]));
-    const boorus = { konachan: createBooruClient('konachan', { userAgent: UA }) };
+    net = mockFetch(async () => jsonResponse({ post: [gelPost(201)] }));
+    const boorus = { gelbooru: createBooruClient('gelbooru', { userAgent: UA }) };
     const t = createTestBot({ boorus });
-    await t.userData.settings.update(42, { source: 'konachan' });
+    await t.userData.settings.update(42, { source: 'gelbooru' });
     await t.text('some western character');
     const edit = tg.calls('editMessageText').at(-1).payload;
     assert.match(edit.text, /some_western_character/);

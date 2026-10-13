@@ -285,3 +285,22 @@ test('18+ канал: только запрещённые посты → empty',
     assert.equal(await autopostOnce(adultAutopostDeps(deps)), 'empty');
     assert.equal(deps.telegram.calls.length, 0);
 });
+
+test('18+ канал: свой круг фаз (свежак дольше) и только арты за последние 2 года', async (t) => {
+    randomSequence(t, [0.99]);
+    const deps = setup();
+    deps.config.adult.schedule = parseSchedule('fresh:3,mix:1,packs:1');
+    deps.config.adult.recentYears = 2;
+    const adult = adultAutopostDeps(deps);
+    assert.equal(currentPhase(new Date(2.5 * H), adult.config.autopost.schedule).name, 'fresh');
+
+    // Вразнобой (3.5 ч от начала круга) — с 1 января прошлого года, без date:>=2017
+    const now = new Date(Date.UTC(2026, 9, 14, 3, 30));
+    const round = 5 * H;
+    const mixAt = new Date(Math.floor(now.getTime() / round) * round + 3.5 * H);
+    assert.equal(currentPhase(mixAt, adult.config.autopost.schedule).name, 'mix');
+    assert.equal(await autopostOnce({ ...adult, now: mixAt }), 'posted');
+    const search = deps.client.calls.find(c => c[0] === 'posts')[1];
+    assert.ok(search.tags.includes(`date:>=${mixAt.getUTCFullYear() - 1}-01-01`));
+    assert.ok(!search.tags.includes('date:>=2017-01-01'));
+});

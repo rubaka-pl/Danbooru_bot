@@ -45,6 +45,8 @@ export function adultAutopostDeps(deps) {
                 channelId: config.adult.channelId,
                 intervalMs: config.adult.intervalMs,
                 rating: 'explicit',
+                schedule: config.adult.schedule,
+                recentYears: config.adult.recentYears,
                 excludeTags: ADULT_FORBIDDEN_TAGS,
                 battleEvery: 0,
                 trends: { ...config.autopost.trends, enabled: false }
@@ -177,8 +179,11 @@ export async function autopostOnce(deps) {
         }
     }
 
-    const defaultTags = autopost.tags.map(name => ({ name, meta: true, postCount: 0 }));
-    const themed = (tag) => [{ name: tag, postCount: 0 }, { name: 'score:>20', meta: true, postCount: 0 }];
+    // recentYears: только арты за последние годы (18+ канал), иначе — теги из настроек
+    const recent = autopost.recentYears > 0 ? [`date:>=${now.getUTCFullYear() - autopost.recentYears + 1}-01-01`] : [];
+    const baseTags = recent.length ? [...autopost.tags.filter(tag => !tag.startsWith('date:')), ...recent] : autopost.tags;
+    const defaultTags = baseTags.map(name => ({ name, meta: true, postCount: 0 }));
+    const themed = (tag) => [{ name: tag, postCount: 0 }, ...['score:>20', ...recent].map(name => ({ name, meta: true, postCount: 0 }))];
     const excluded = autopost.excludeTags ?? [];
     const skip = (post) => hasAnyTag(post, excluded);
     const search = (tags, count) => findPosts(client, { tags, rating, count, skip, tagLimit: danbooru.tagLimit });

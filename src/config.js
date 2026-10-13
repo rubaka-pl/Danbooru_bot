@@ -82,7 +82,11 @@ export const config = {
     adult: {
         enabled: (env.ADULT_AUTOPOST || 'on').toLowerCase() !== 'off',
         channelId: env.ADULT_GROUP_ID ?? '@obitel_dionisa_18',
-        intervalMs: toInt(env.ADULT_AUTOPOST_INTERVAL, toInt(env.AUTOPOST_INTERVAL, 60)) * 1000
+        intervalMs: toInt(env.ADULT_AUTOPOST_INTERVAL, toInt(env.AUTOPOST_INTERVAL, 60)) * 1000,
+        // Свой круг фаз: свежак дольше, чем в основном канале
+        schedule: parseSchedule(env.ADULT_AUTOPOST_SCHEDULE ?? 'fresh:3,mix:1,packs:1'),
+        // «Вразнобой» и «паки» — только арты за последние N календарных лет (2 → с 1 января прошлого года), 0 — за все годы
+        recentYears: toInt(env.ADULT_RECENT_YEARS, 2)
     },
 
     // «🏆 Топ недели» в канале: день недели (0 — воскресенье) и час. RECAP=off — выключить.

@@ -9,7 +9,8 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  *  - на токене висит webhook (например, после Vercel) — тогда polling не получает сообщения.
  * Вместо падения ждём и пробуем снова, а админ получает уведомление.
  */
-export async function launchPolling(bot, { allowedUpdates, alerts, onLaunch, retryMs = 30_000, log = console } = {}) {
+export async function launchPolling(bot, { allowedUpdates, alerts, onLaunch, retryMs = 30_000, alertAfter = 3, log = console } = {}) {
+    let conflicts = 0;
     for (let attempt = 1; ; attempt++) {
         try {
             const info = await bot.telegram.getWebhookInfo().catch(() => null);
@@ -24,7 +25,9 @@ export async function launchPolling(bot, { allowedUpdates, alerts, onLaunch, ret
                 log.error('❌ 409 Conflict: другая копия бота с этим токеном уже получает сообщения. '
                     + 'Останови старый бот (другой хостинг, компьютер, второй сервис Render). Пробую снова через '
                     + `${Math.round(retryMs / 1000)} сек.`);
-                await alerts?.notify('conflict', 'Бот не получает сообщения: с этим же токеном запущена другая копия бота (409 Conflict). '
+                // Один-два конфликта — обычное дело при деплое (старая копия ещё не выключилась),
+                // админу пишем, только если конфликт держится
+                if (++conflicts >= alertAfter) await alerts?.notify('conflict', 'Бот не получает сообщения: с этим же токеном запущена другая копия бота (409 Conflict). '
                     + 'Останови лишнюю копию — старый сервер, компьютер или второй сервис на хостинге.');
                 await sleep(retryMs);
                 continue;

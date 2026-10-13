@@ -110,6 +110,7 @@ export function testConfig(overrides = {}) {
     config.search.sendDelayMs = 0;
     config.autopost.channelId = '@test_channel';
     config.adult.channelId = '@test_adult';
+    config.adult.schedule = null;
     config.autopost.quietHours = null;
     config.autopost.schedule = null; // фазы зависят от времени — в тестах всегда «вразнобой»
     config.adminIds = [];

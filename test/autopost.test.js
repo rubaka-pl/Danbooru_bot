@@ -10,7 +10,7 @@ function fakeTelegram() {
     const calls = [];
     return {
         calls,
-        async sendPhoto(chatId, media) { calls.push(['sendPhoto', chatId, media]); return { message_id: calls.length }; },
+        async sendPhoto(chatId, media, options) { calls.push(['sendPhoto', chatId, media, options]); return { message_id: calls.length }; },
         async sendMediaGroup(chatId, media) { calls.push(['sendMediaGroup', chatId, media]); return media.map((_, i) => ({ message_id: 100 + i })); }
     };
 }
@@ -152,52 +152,77 @@ test('цикл автопоста: пишет в лог начало и коне
     stop();
 });
 
-// ---------- Волны трендов ----------
-import { isTrendTime, TREND_WAVE_KEY } from '../src/services/autopost.js';
+// ---------- Фазы: свежак → вразнобой → паки ----------
+import { currentPhase, TREND_WAVE_KEY } from '../src/services/autopost.js';
+import { parseSchedule } from '../src/config.js';
 
 const H = 60 * 60 * 1000;
-const trends = { enabled: true, hours: 4, pauseHours: 2, perWave: 10 };
+const schedule = parseSchedule('fresh:2,mix:1,packs:1');
 
-test('цикл: 4 часа волна трендов → 2 часа без трендов → снова волна', () => {
-    const at = (hours) => new Date(hours * H);
-    assert.equal(isTrendTime(at(0), trends), true);
-    assert.equal(isTrendTime(at(3.9), trends), true);
-    assert.equal(isTrendTime(at(4.1), trends), false);
-    assert.equal(isTrendTime(at(5.9), trends), false);
-    assert.equal(isTrendTime(at(6.1), trends), true);
-    assert.equal(isTrendTime(at(1), { ...trends, enabled: false }), false);
-    assert.equal(isTrendTime(at(1), null), false);
+test('расписание: разбор и выключение', () => {
+    assert.deepEqual(schedule, [{ name: 'fresh', hours: 2 }, { name: 'mix', hours: 1 }, { name: 'packs', hours: 1 }]);
+    assert.equal(parseSchedule('off'), null);
+    assert.equal(parseSchedule('fresh:2,lol:1'), null);
+    assert.equal(parseSchedule('fresh:0'), null);
 });
 
-const trendSetup = () => {
+test('цикл: 2 часа свежак → час вразнобой → час паки → снова свежак', () => {
+    const at = (hours) => currentPhase(new Date(hours * H), schedule);
+    assert.deepEqual(at(0), { name: 'fresh', index: 0, endsAt: 2 * H });
+    assert.equal(at(1.9).name, 'fresh');
+    assert.equal(at(2.1).name, 'mix');
+    assert.deepEqual(at(3.5), { name: 'packs', index: 2, endsAt: 4 * H });
+    assert.deepEqual(at(4.1), { name: 'fresh', index: 3, endsAt: 6 * H });
+    assert.equal(currentPhase(new Date(), null), null);
+});
+
+const phaseSetup = (client) => {
     const config = testConfig();
-    config.autopost.trends = trends;
+    config.autopost.schedule = schedule;
+    config.autopost.trends = { enabled: true, perWave: 10 };
     config.autopost.intervalMs = 60_000;
-    return setup({ config });
+    const deps = setup({ client, config });
+    deps.store = new MemoryStore();
+    return deps;
 };
 
-test('в волну тренд выпадает вперемешку с обычными постами: шанс = осталось трендов / осталось постов', async (t) => {
-    // 1-й random — рейтинг (0.99 → general), 2-й — бросок на тренд
-    // До конца волны 3 часа = 180 постов, трендов 10 → шанс ≈ 0.055
-    randomSequence(t, [0.99, 0.05, 0]);
-    const lucky = trendSetup();
-    lucky.store = new MemoryStore();
+test('свежак: арты за последние 30 дней с подписью «Свежее»', async (t) => {
+    randomSequence(t, [0.99]); // general, без тренда
+    const deps = phaseSetup();
+    assert.equal(await autopostOnce({ ...deps, now: new Date('2026-10-14T01:00:00Z') }), 'posted');
+    const search = deps.client.calls.find(c => c[0] === 'posts')[1];
+    assert.ok(search.tags.includes('date:>=2026-09-14'));
+    assert.ok(search.tags.includes('score:>10'));
+    assert.match(deps.telegram.calls[0][3]?.caption ?? '', /Свежее/);
+});
+
+test('свежак кончился — обычный пост', async (t) => {
+    randomSequence(t, [0.99]);
+    const client = fakeClient({ posts: async (p) => (client.calls.push(['posts', p]), p.tags.includes('score:>10') ? [] : [makePost()]) });
+    const deps = phaseSetup(client);
+    assert.equal(await autopostOnce({ ...deps, now: new Date(1 * H) }), 'posted');
+    assert.ok(client.calls.at(-1)[1].tags.includes('score:>50'));
+});
+
+test('в свежак тренд выпадает вперемешку: шанс = осталось трендов / осталось постов', async (t) => {
+    // 1-й random — рейтинг (0.99 → general), 2-й — бросок на тренд.
+    // До конца фазы 1 час = 60 постов, трендов 10 → шанс ≈ 0.17
+    randomSequence(t, [0.99, 0.1, 0]);
+    const lucky = phaseSetup();
     assert.equal(await autopostOnce({ ...lucky, now: new Date(1 * H) }), 'posted');
     assert.deepEqual(lucky.client.calls[0], ['popular', { scale: 'day' }]);
     assert.deepEqual(await lucky.store.get(TREND_WAVE_KEY), { index: 0, count: 1 });
 
     t.mock.restoreAll();
-    randomSequence(t, [0.99, 0.06, 0.99]);
-    const regular = trendSetup();
-    regular.store = new MemoryStore();
+    randomSequence(t, [0.99, 0.2, 0.99]);
+    const regular = phaseSetup();
     await autopostOnce({ ...regular, now: new Date(1 * H) });
     assert.ok(!regular.client.calls.some(c => c[0] === 'popular'));
 });
 
-test('лимит трендов за волну; новая волна — счёт заново; вне волны трендов нет', async (t) => {
+test('лимит трендов за фазу; новая фаза свежака — счёт заново; вне свежака трендов нет', async (t) => {
     randomSequence(t, [0.99, 0]);
-    const deps = trendSetup();
-    deps.store = new MemoryStore();
+    const deps = phaseSetup();
 
     await deps.store.set(TREND_WAVE_KEY, { index: 0, count: 10 });
     await autopostOnce({ ...deps, now: new Date(1 * H) });
@@ -205,24 +230,29 @@ test('лимит трендов за волну; новая волна — сч�
 
     t.mock.restoreAll();
     randomSequence(t, [0.99, 0]);
-    await autopostOnce({ ...deps, now: new Date(7 * H) }); // волна №1
+    await autopostOnce({ ...deps, now: new Date(5 * H) }); // свежак, второй круг
     assert.ok(deps.client.calls.some(c => c[0] === 'popular'));
-    assert.deepEqual(await deps.store.get(TREND_WAVE_KEY), { index: 1, count: 1 });
+    assert.deepEqual(await deps.store.get(TREND_WAVE_KEY), { index: 3, count: 1 });
 
     deps.client.calls.length = 0;
-    await autopostOnce({ ...deps, now: new Date(5 * H) }); // пауза
+    await autopostOnce({ ...deps, now: new Date(2.5 * H) }); // вразнобой
     assert.ok(!deps.client.calls.some(c => c[0] === 'popular'));
 });
 
-test('свежие тренды кончились — обычный пост', async (t) => {
+test('свежие тренды кончились — свежий пост', async (t) => {
     randomSequence(t, [0.99, 0]);
-    const config = testConfig();
-    config.autopost.trends = trends;
     const client = fakeClient({ popular: async () => [], posts: async (p) => (p.tags.includes('order:rank') ? [] : [makePost()]) });
-    const deps = setup({ client, config });
-    deps.store = new MemoryStore();
+    const deps = phaseSetup(client);
     assert.equal(await autopostOnce({ ...deps, now: new Date(1 * H) }), 'posted');
     assert.equal(await deps.store.get(TREND_WAVE_KEY), null);
+});
+
+test('паки: альбом примерно через раз, без битв', async (t) => {
+    // general, без лайков, альбом (0.01 < 1/3), размер 5
+    randomSequence(t, [0.9, 0.9, 0.01, 0]);
+    const client = fakeClient({ posts: async (params) => (client.calls.push(['posts', params]), Array.from({ length: 10 }, () => makePost())) });
+    const deps = phaseSetup(client);
+    assert.equal(await autopostOnce({ ...deps, now: new Date(3.5 * H) }), 'album');
 });
 
 test('18+ канал: только explicit, в свой чат, без запрещённых тегов и без записи в статистику', async (t) => {

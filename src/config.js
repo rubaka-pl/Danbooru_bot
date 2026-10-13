@@ -23,6 +23,12 @@ export const config = {
         userAgent: 'DanbooruTelegramBot/2.0 (+https://github.com/rubaka-pl/Danbooru_bot)'
     },
 
+    // Gelbooru (необязательно): если он отвечает 401/403 — ключ из My Account → Options → API Access Credentials
+    gelbooru: {
+        apiKey: env.GELBOORU_API_KEY || '',
+        userId: env.GELBOORU_USER_ID || ''
+    },
+
     search: {
         counts: [1, 3, 5, 10, 20, 30],
         albumFrom: 10,       // с такого количества картинки идут альбомами по 10 (если включено в /settings)
@@ -44,13 +50,19 @@ export const config = {
         albumSize: [5, 10],
         // Примерно каждый N-й автопост — «⚔️ Битва артов» с опросом (0 — выкл.)
         battleEvery: toInt(env.BATTLE_EVERY, 25),
-        // Волны трендов: TREND_HOURS часов в ленту вперемешку с обычными постами
-        // попадает TREND_PER_WAVE популярных артов Danbooru, потом TREND_PAUSE_HOURS
-        // часов — только обычные посты, и снова по кругу. TRENDS=off — выкл.
+        // Расписание фаз по кругу (часы): fresh — свежак, mix — вразнобой, packs — паки (альбомы).
+        // AUTOPOST_SCHEDULE=off — всегда вразнобой.
+        schedule: parseSchedule(env.AUTOPOST_SCHEDULE ?? 'fresh:2,mix:1,packs:1'),
+        // Свежак: арты не старше FRESH_DAYS дней с рейтингом выше FRESH_MIN_SCORE
+        fresh: {
+            days: toInt(env.FRESH_DAYS, 30),
+            minScore: toInt(env.FRESH_MIN_SCORE, 10)
+        },
+        // В фазе «паки» примерно каждый N-й автопост — альбом
+        packEvery: toInt(env.PACK_EVERY, 3),
+        // В фазе «свежак» вперемешку попадает TREND_PER_WAVE популярных артов Danbooru. TRENDS=off — выкл.
         trends: {
             enabled: (env.TRENDS || 'on').toLowerCase() !== 'off',
-            hours: Number.parseFloat(env.TREND_HOURS ?? '4'),
-            pauseHours: Number.parseFloat(env.TREND_PAUSE_HOURS ?? '2'),
             perWave: toInt(env.TREND_PER_WAVE, 10)
         },
         // Доля постов, подобранных по статистике реакций в канале (0..1)
@@ -108,6 +120,17 @@ export const config = {
         token: env.UPSTASH_REDIS_REST_TOKEN || env.KV_REST_API_TOKEN || ''
     }
 };
+
+/** "fresh:2,mix:1,packs:1" → [{ name: 'fresh', hours: 2 }, …]; off или ошибка — null */
+export function parseSchedule(value) {
+    if (String(value).trim().toLowerCase() === 'off') return null;
+    const phases = String(value).split(',').map(part => {
+        const [name, hours] = part.split(':').map(s => s.trim());
+        return { name: name?.toLowerCase(), hours: Number.parseFloat(hours) };
+    });
+    const known = ['fresh', 'mix', 'packs'];
+    return phases.every(p => known.includes(p.name) && p.hours > 0) ? phases : null;
+}
 
 function parseQuietHours(value) {
     const match = String(value).match(/^\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*$/);

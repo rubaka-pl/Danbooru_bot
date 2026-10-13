@@ -42,14 +42,23 @@ export function ratingFromMeta(value) {
 
 // Теги, при которых по умолчанию включается 18+ режим.
 export const NSFW_TAGS = [
-    'anal', 'anal_fluid', 'anal_object_insertion', 'anilingus', 'ahegao', 'anus', 'bdsm', 'bondage',
-    'bukkake', 'butt_plug', 'chastity_cage', 'clitoris', 'cooperative_fellatio', 'cowgirl_position',
-    'creampie', 'cum', 'cum_in_ass', 'cunnilingus', 'deepthroat', 'dildo', 'doggystyle',
-    'double_penetration', 'ejaculation', 'erection', 'exhibitionism', 'facial', 'fellatio', 'fingering',
-    'footjob', 'futanari', 'gangbang', 'gaping', 'group_sex', 'guro', 'handjob', 'huge_penis',
-    'implied_sex', 'masturbation', 'missionary', 'mmf_threesome', 'netorare', 'nipples', 'nude',
-    'orgasm', 'orgy', 'paizuri', 'penis', 'pussy', 'pussy_juice', 'rape', 'reverse_cowgirl_position',
-    'rimjob', 'sex', 'sex_toy', 'testicles', 'threesome', 'urethral_insertion', 'vaginal', 'vore'
+    'after_sex', 'ahegao', 'anal', 'anal_beads', 'anal_fluid', 'anal_object_insertion', 'anilingus', 'anus',
+    'armpit_sex', 'bar_censor', 'bdsm', 'bondage', 'breast_sucking', 'bukkake', 'butt_plug', 'buttjob',
+    'chastity_cage', 'clitoris', 'clothed_female_nude_male', 'clothed_sex', 'completely_nude',
+    'cooperative_fellatio', 'cowgirl_position', 'creampie', 'cum', 'cum_in_ass', 'cum_in_mouth',
+    'cum_in_pussy', 'cum_on_body', 'cum_on_breasts', 'cum_on_hair', 'cum_pool', 'cumdrip', 'cunnilingus',
+    'deepthroat', 'dildo', 'doggystyle', 'double_penetration', 'egg_vibrator', 'ejaculation', 'erection',
+    'exhibitionism', 'facial', 'fellatio', 'female_ejaculation', 'female_masturbation', 'female_pubic_hair',
+    'fingering', 'footjob', 'fucked_silly', 'full_nelson', 'futanari', 'gangbang', 'gaping', 'grinding',
+    'group_sex', 'guro', 'handjob', 'huge_penis', 'implied_sex', 'impregnation', 'irrumatio', 'lactation',
+    'licking_penis', 'male_masturbation', 'male_pubic_hair', 'masturbation', 'mating_press', 'missionary',
+    'mmf_threesome', 'mosaic_censoring', 'mutual_masturbation', 'netorare', 'nipple_tweak', 'nipples',
+    'nude', 'object_insertion', 'oral', 'orgasm', 'orgy', 'paizuri', 'paizuri_under_clothes', 'penetration',
+    'penis', 'prone_bone', 'pubic_hair', 'pussy', 'pussy_juice', 'pussy_juice_trail', 'rape',
+    'reverse_cowgirl_position', 'rimjob', 'sex', 'sex_from_behind', 'sex_machine', 'sex_toy', 'spread_anus',
+    'spread_pussy', 'squirting', 'standing_sex', 'stomach_bulge', 'strap-on', 'suspended_congress',
+    'tentacle_sex', 'testicles', 'thigh_sex', 'threesome', 'tribadism', 'uncensored', 'urethral_insertion',
+    'vaginal', 'vaginal_object_insertion', 'vibrator', 'vore', 'x-ray'
 ];
 
 const NSFW_SET = new Set(NSFW_TAGS);

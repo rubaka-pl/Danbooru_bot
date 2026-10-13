@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { autopostOnce, startAutopostLoop } from '../src/services/autopost.js';
+import { adultAutopostDeps, autopostOnce, startAutopostLoop } from '../src/services/autopost.js';
 import { MemoryHistory } from '../src/services/history.js';
 import { MemoryStore } from '../src/services/store.js';
 import { createChannelStats } from '../src/services/channelStats.js';
@@ -223,4 +223,35 @@ test('свежие тренды кончились — обычный пост',
     deps.store = new MemoryStore();
     assert.equal(await autopostOnce({ ...deps, now: new Date(1 * H) }), 'posted');
     assert.equal(await deps.store.get(TREND_WAVE_KEY), null);
+});
+
+test('18+ канал: только explicit, в свой чат, без запрещённых тегов и без записи в статистику', async (t) => {
+    randomSequence(t, [0.99]); // без лайков, без альбома
+    const forbidden = makePost({ rating: 'e', tag_string: 'loli 1girl' });
+    const ok = makePost({ rating: 'e', tag_string: '1girl nude' });
+    const client = fakeClient({ posts: async (params) => (client.calls.push(['posts', params]), [forbidden, ok]) });
+    const deps = setup({ client });
+    const adult = adultAutopostDeps(deps);
+
+    assert.equal(await autopostOnce(adult), 'posted');
+    const [[, chatId, media]] = deps.telegram.calls;
+    assert.equal(chatId, '@test_adult');
+    assert.equal(media, ok.file_url);
+    const search = client.calls.find(c => c[0] === 'posts')[1];
+    assert.ok(search.tags.includes('rating:e') || !search.tags.some(tag => tag.startsWith('rating:')));
+    assert.equal(adult.config.autopost.battleEvery, 0);
+    assert.equal(adult.config.autopost.trends.enabled, false);
+    assert.equal(deps.config.autopost.channelId, '@test_channel'); // основной конфиг не тронут
+
+    // В статистику основного канала посты 18+ не попадают
+    await deps.channelStats.updateReactions(1, 10);
+    assert.equal((await deps.channelStats.top()).length, 0);
+});
+
+test('18+ канал: только запрещённые посты → empty', async (t) => {
+    randomSequence(t, [0.99]);
+    const client = fakeClient({ posts: async () => [makePost({ rating: 'e', tag_string: 'shota 1boy' })] });
+    const deps = setup({ client });
+    assert.equal(await autopostOnce(adultAutopostDeps(deps)), 'empty');
+    assert.equal(deps.telegram.calls.length, 0);
 });

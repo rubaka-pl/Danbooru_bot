@@ -1,6 +1,6 @@
 // Запуск в режиме постоянного сервера (Render, VPS, локально): long polling + автопост по таймеру.
 import { ALLOWED_UPDATES, createApp } from './app.js';
-import { startAutopostLoop } from './services/autopost.js';
+import { adultAutopostDeps, startAutopostLoop } from './services/autopost.js';
 import { startDigestLoop } from './services/subscriptions.js';
 import { COMMANDS } from './bot/handlers/start.js';
 import { createHttpServer } from './server.js';
@@ -33,6 +33,11 @@ let stopAutopost = () => {};
 if (config.autopost.enabled && config.autopost.channelId) {
     stopAutopost = startAutopostLoop({ ...app, telegram: bot.telegram });
 }
+let stopAdultAutopost = () => {};
+if (config.autopost.enabled && config.adult.enabled && config.adult.channelId) {
+    stopAdultAutopost = startAutopostLoop(adultAutopostDeps({ ...app, telegram: bot.telegram }));
+    console.log(`🔞 Автопост 18+ в ${config.adult.channelId}`);
+}
 
 const stopDigest = startDigestLoop({ ...app, telegram: bot.telegram });
 const stopKeepAlive = startKeepAlive({ url: config.keepAliveUrl });
@@ -59,6 +64,7 @@ launchPolling(bot, {
 const shutdown = async (signal) => {
     console.log(`🛑 ${signal}: останавливаюсь…`);
     stopAutopost();
+    stopAdultAutopost();
     stopDigest();
     stopKeepAlive();
     bot.stop(signal);

@@ -18,6 +18,47 @@ async function freshPosts(posts, history, limit) {
     return result;
 }
 
+/** Теги, с которыми пост никогда не уходит в 18+ канал (несовершеннолетние персонажи). */
+export const ADULT_FORBIDDEN_TAGS = [
+    'loli', 'shota', 'toddlercon', 'child', 'female_child', 'male_child', 'aged_down',
+    'kindergarten_uniform', 'randoseru', 'elementary_school_student'
+];
+
+const hasAnyTag = (post, tags) => {
+    const own = new Set((post.tag_string || '').split(' '));
+    return tags.some(tag => own.has(tag));
+};
+
+/**
+ * Зависимости автопоста для 18+ канала: только explicit, без трендов и битв,
+ * без запрещённых тегов. Статистику реакций основного канала только читает —
+ * посты 18+ в неё не пишутся.
+ */
+export function adultAutopostDeps(deps) {
+    const { config, channelStats } = deps;
+    return {
+        ...deps,
+        config: {
+            ...config,
+            autopost: {
+                ...config.autopost,
+                channelId: config.adult.channelId,
+                intervalMs: config.adult.intervalMs,
+                rating: 'explicit',
+                excludeTags: ADULT_FORBIDDEN_TAGS,
+                battleEvery: 0,
+                trends: { ...config.autopost.trends, enabled: false }
+            }
+        },
+        channelStats: channelStats && {
+            pickLikedTag: (options) => channelStats.pickLikedTag(options),
+            recordPost: async () => {}
+        },
+        alertKey: 'autopost-18',
+        label: 'Автопост 18+'
+    };
+}
+
 const HOUR = 60 * 60 * 1000;
 export const TREND_WAVE_KEY = 'autopost:trendWave';
 
@@ -114,8 +155,9 @@ export async function autopostOnce(deps) {
         }
     }
 
-    // Примерно каждый N-й пост — sensitive (случайно, чтобы работало и без состояния)
-    const rating = Math.random() < 1 / autopost.sensitiveEvery ? 'sensitive' : 'general';
+    // Примерно каждый N-й пост — sensitive (случайно, чтобы работало и без состояния);
+    // у 18+ канала рейтинг задан в настройках
+    const rating = autopost.rating ?? (Math.random() < 1 / autopost.sensitiveEvery ? 'sensitive' : 'general');
     const countTrend = await trendDue({ store, config, now });
     if (countTrend) {
         const result = await postTrending(deps, rating);
@@ -127,7 +169,9 @@ export async function autopostOnce(deps) {
 
     const defaultTags = autopost.tags.map(name => ({ name, meta: true, postCount: 0 }));
     const themed = (tag) => [{ name: tag, postCount: 0 }, { name: 'score:>20', meta: true, postCount: 0 }];
-    const search = (tags, count) => findPosts(client, { tags, rating, count, tagLimit: danbooru.tagLimit });
+    const excluded = autopost.excludeTags ?? [];
+    const skip = (post) => hasAnyTag(post, excluded);
+    const search = (tags, count) => findPosts(client, { tags, rating, count, skip, tagLimit: danbooru.tagLimit });
     const userAgent = danbooru.userAgent;
 
     const likedTag = Math.random() < autopost.adaptiveShare ? await channelStats?.pickLikedTag() : null;
@@ -227,7 +271,7 @@ async function postBattle({ telegram, client, history, config, channelStats, sea
  */
 export function startAutopostLoop(deps) {
     const { intervalMs, maxBackoffMs } = deps.config.autopost;
-    const { alerts, health } = deps;
+    const { alerts, health, alertKey = 'autopost', label = 'Автопост' } = deps;
     let delay = intervalMs;
     let timer = null;
     let wasQuiet = false;
@@ -236,24 +280,24 @@ export function startAutopostLoop(deps) {
     const tick = async () => {
         try {
             const result = await autopostOnce(deps);
-            if (result === 'quiet' && !wasQuiet) console.log('🌙 Тихие часы — автопост на паузе');
-            if (result !== 'quiet' && wasQuiet) console.log('☀️ Тихие часы закончились');
+            if (result === 'quiet' && !wasQuiet) console.log(`🌙 Тихие часы — ${label.toLowerCase()} на паузе`);
+            if (result !== 'quiet' && wasQuiet) console.log(`☀️ Тихие часы закончились (${label.toLowerCase()})`);
             wasQuiet = result === 'quiet';
             delay = intervalMs;
-            health?.markAutopost(result);
-            await alerts?.success('autopost', { label: 'Автопост' });
+            if (alertKey === 'autopost') health?.markAutopost(result);
+            await alerts?.success(alertKey, { label });
 
             emptyStreak = result === 'empty' ? emptyStreak + 1 : 0;
             if (emptyStreak === 10) {
-                await alerts?.notify('autopost-empty', 'Автопост 10 раз подряд не нашёл новых картинок. Проверь AUTOPOST-теги и рейтинг.');
+                await alerts?.notify(`${alertKey}-empty`, `${label} 10 раз подряд не нашёл новых картинок. Проверь AUTOPOST-теги и рейтинг.`);
             }
         } catch (error) {
-            health?.markAutopostError();
-            const failures = (await alerts?.failure('autopost', error, { label: 'Автопост' })) ?? 1;
+            if (alertKey === 'autopost') health?.markAutopostError();
+            const failures = (await alerts?.failure(alertKey, error, { label })) ?? 1;
             const rateLimited = error?.isRateLimit || error?.response?.error_code === 429;
             // 429 — сразу увеличиваем паузу; другие ошибки — со второй подряд (Danbooru/Telegram лежат)
             delay = rateLimited || failures >= 2 ? Math.min(delay * 2, maxBackoffMs) : intervalMs;
-            console.error(`❌ Ошибка автопоста: ${error.message}${delay > intervalMs ? ` — пауза ${delay / 1000} сек` : ''}`);
+            console.error(`❌ Ошибка автопоста${alertKey === 'autopost' ? '' : ` (${label})`}: ${error.message}${delay > intervalMs ? ` — пауза ${delay / 1000} сек` : ''}`);
         } finally {
             timer = setTimeout(tick, delay);
         }

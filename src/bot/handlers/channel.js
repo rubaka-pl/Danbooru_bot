@@ -5,9 +5,19 @@ import { totalReactions } from '../../services/channelStats.js';
  * Реакции в канале → статистика; /stats — что заходит подписчикам.
  * Боту нужны права администратора в канале, а в allowed_updates — message_reaction_count.
  */
+/** Совпадает ли чат из апдейта с @username или числовым id из настроек. */
+export function isChat(chat, channelId) {
+    if (!chat || !channelId) return false;
+    const id = String(channelId);
+    if (id.startsWith('@')) return chat.username?.toLowerCase() === id.slice(1).toLowerCase();
+    return String(chat.id) === id;
+}
+
 export function registerChannel(bot, { channelStats, config }) {
     bot.on('message_reaction_count', async (ctx) => {
         const update = ctx.update.message_reaction_count;
+        // Реакции из 18+ канала не смешиваем со статистикой основного (id сообщений пересекаются)
+        if (isChat(update.chat, config.adult?.channelId)) return;
         try {
             await channelStats.updateReactions(update.message_id, totalReactions(update.reactions));
         } catch (error) {

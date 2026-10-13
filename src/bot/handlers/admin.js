@@ -1,11 +1,11 @@
 import { Markup } from 'telegraf';
-import { autopostOnce, PAUSED_KEY } from '../../services/autopost.js';
+import { adultAutopostDeps, autopostOnce, PAUSED_KEY } from '../../services/autopost.js';
 import { runRecapIfDue } from '../../services/recap.js';
 import { isQuietTime } from '../../utils/quietHours.js';
 import { escapeHtml, humanizeTag } from '../../utils/format.js';
 
 /**
- * Админ-панель владельца канала: /admin, /post, /pause, /resume, /recap.
+ * Админ-панель владельца канала: /admin, /post, /post18, /pause, /resume, /recap.
  * Работает только для ADMIN_IDS (если список пуст — выключена).
  */
 export function registerAdmin(bot, deps) {
@@ -32,6 +32,7 @@ export function registerAdmin(bot, deps) {
             '🛠 <b>Админка</b>',
             '',
             `📡 Канал: ${escapeHtml(String(channelId))}`,
+            config.adult.enabled && config.adult.channelId && `🔞 18+: ${escapeHtml(String(config.adult.channelId))}`,
             `Автопост: ${!config.autopost.enabled ? '⛔ выключен (AUTOPOST=off)' : paused ? '⏸ на паузе' : quiet ? '🌙 тихие часы' : '▶️ работает'}`,
             `🔔 Чатов с подписками: ${subsChats}`,
             top.length && `📊 Лучше всего заходят: ${top.map(t => escapeHtml(humanizeTag(t.tag))).join(', ')}`
@@ -48,6 +49,12 @@ export function registerAdmin(bot, deps) {
         return result === 'empty' ? '😔 Не нашлось новой картинки' : `📤 Готово (${result === 'album' ? 'альбом' : 'пост'})`;
     };
 
+    const postAdultNow = async (ctx) => {
+        if (!config.adult.enabled || !config.adult.channelId) return '🔞 Автопост 18+ выключен (ADULT_GROUP_ID / ADULT_AUTOPOST)';
+        const result = await autopostOnce({ ...adultAutopostDeps({ ...deps, telegram: ctx.telegram }), force: true });
+        return result === 'empty' ? '😔 Не нашлось новой картинки 18+' : `🔞 Готово (${result === 'album' ? 'альбом' : 'пост'})`;
+    };
+
     const recapNow = async (ctx) => {
         const result = await runRecapIfDue({ ...deps, telegram: ctx.telegram }, { force: true });
         return result === 'posted' ? '🏆 Топ недели опубликован' : '😔 За неделю нет постов с реакциями';
@@ -59,10 +66,11 @@ export function registerAdmin(bot, deps) {
     }));
 
     bot.command('post', guard(async (ctx) => ctx.reply(await postNow(ctx))));
+    bot.command('post18', guard(async (ctx) => ctx.reply(await postAdultNow(ctx))));
     bot.command('recap', guard(async (ctx) => ctx.reply(await recapNow(ctx))));
     bot.command('pause', guard(async (ctx) => {
         await store.set(PAUSED_KEY, true);
-        await ctx.reply('⏸ Автопост на паузе. Вернуть: /resume');
+        await ctx.reply('⏸ Автопост на паузе (и 18+ тоже). Вернуть: /resume');
     }));
     bot.command('resume', guard(async (ctx) => {
         await store.del(PAUSED_KEY);

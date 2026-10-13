@@ -68,6 +68,10 @@ test('autopost: авторизация и тихие часы', async () => {
     const viaQuery = res();
     await autopost({ headers: {}, query: { secret: 'cron-secret' } }, viaQuery);
     assert.equal(viaQuery.statusCode, 200);
+
+    const adult = res();
+    await autopost({ headers: { authorization: 'Bearer cron-secret' }, query: { channel: '18' } }, adult);
+    assert.deepEqual([adult.statusCode, adult.body], [200, { ok: true, result: 'quiet' }]);
 });
 
 test('digest: авторизация и запуск без подписчиков', async (t) => {

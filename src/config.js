@@ -65,6 +65,14 @@ export const config = {
         cronSecret: env.CRON_SECRET || ''
     },
 
+    // Второй автопост — только 18+ (rating:explicit) в отдельный канал/группу.
+    // Бот должен быть там администратором. ADULT_AUTOPOST=off или пустой ADULT_GROUP_ID — выкл.
+    adult: {
+        enabled: (env.ADULT_AUTOPOST || 'on').toLowerCase() !== 'off',
+        channelId: env.ADULT_GROUP_ID ?? '@obitel_dionisa_18',
+        intervalMs: toInt(env.ADULT_AUTOPOST_INTERVAL, toInt(env.AUTOPOST_INTERVAL, 60)) * 1000
+    },
+
     // «🏆 Топ недели» в канале: день недели (0 — воскресенье) и час. RECAP=off — выключить.
     recap: {
         enabled: (env.RECAP || 'on').toLowerCase() !== 'off',

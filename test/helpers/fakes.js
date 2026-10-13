@@ -109,6 +109,7 @@ export function testConfig(overrides = {}) {
     config.botToken = '123:TEST';
     config.search.sendDelayMs = 0;
     config.autopost.channelId = '@test_channel';
+    config.adult.channelId = '@test_adult';
     config.autopost.quietHours = null;
     config.autopost.trends.enabled = false; // волны трендов зависят от времени — в тестах выключены
     config.adminIds = [];

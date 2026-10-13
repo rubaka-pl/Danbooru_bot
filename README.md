@@ -50,7 +50,8 @@
 - 🏆 **«Топ недели»**: по воскресеньям в 20:00 публикует 5 лучших постов недели со ссылками
 - ⚔️ **«Битва артов»**: иногда — два персонажа и опрос «Кто круче?»; голоса тоже учитываются во вкусах канала
 - 🖼 Под постами канала — кнопка **View original**
-- 🛠 **Админка** (`ADMIN_IDS`): `/admin`, `/post` (запостить сейчас), `/pause`, `/resume`, `/recap`
+- 🔞 **Второй канал 18+** ([@obitel_dionisa_18](https://t.me/obitel_dionisa_18)): такой же автопост (одиночные посты, альбомы, темы по реакциям основного канала, тихие часы), но только `rating:explicit`; без трендов и битв. Посты с тегами `loli`, `shota`, `child` и т. п. туда не попадают никогда (`ADULT_GROUP_ID`, `ADULT_AUTOPOST=off`)
+- 🛠 **Админка** (`ADMIN_IDS`): `/admin`, `/post` (запостить сейчас), `/post18` (в 18+ канал), `/pause`, `/resume`, `/recap`
 
 **Надёжность («работает годами»)**
 - 🩺 `/health` — хостинг сам перезапускает бота при зависании
@@ -93,7 +94,7 @@ src/
       forYou.js         — /foryou
       quiz.js           — /quiz, /quiztop
       info.js           — /info
-      admin.js          — /admin, /post, /pause, /resume, /recap
+      admin.js          — /admin, /post, /post18, /pause, /resume, /recap
       profile.js        — /me, /history, /wallpaper
   services/
     danbooru.js         — клиент API Danbooru
@@ -149,6 +150,7 @@ Start command: `npm start` (или старая `node main.js` — тоже ра
    ```
 5. Cron: на бесплатном тарифе Vercel cron запускается только раз в день, поэтому используй бесплатный [cron-job.org](https://cron-job.org):
    - автопост: `https://<проект>.vercel.app/api/autopost?secret=<CRON_SECRET>` — например каждые 5–10 минут (в тихие часы ответит `quiet`);
+   - автопост 18+: `https://<проект>.vercel.app/api/autopost?secret=<CRON_SECRET>&channel=18` — отдельная задача, с тем же или другим интервалом;
    - подписки: `https://<проект>.vercel.app/api/digest?secret=<CRON_SECRET>` — раз в час (рассылка уйдёт один раз в день после `DIGEST_HOUR`).
 
 > ⚠️ Одновременно работать может только один режим: webhook (Vercel) **или** polling (Render). Чтобы вернуться на polling — `npm run webhook:delete`.
@@ -161,6 +163,9 @@ Start command: `npm start` (или старая `node main.js` — тоже ра
 | `GROUP_ID` | `@Obitel_Dionisa` | канал для автопоста |
 | `AUTOPOST` | `on` | `off` — выключить автопост |
 | `AUTOPOST_INTERVAL` | `60` | интервал автопоста в секундах (polling) |
+| `ADULT_GROUP_ID` | `@obitel_dionisa_18` | канал/группа для автопоста 18+ (бот должен быть там админом), пусто — выкл. |
+| `ADULT_AUTOPOST` | `on` | `off` — выключить автопост 18+ |
+| `ADULT_AUTOPOST_INTERVAL` | как `AUTOPOST_INTERVAL` | интервал автопоста 18+ в секундах (polling) |
 | `QUIET_HOURS` | `23:30-06:00` | тихие часы автопоста, `off` — выключить |
 | `TZ_NAME` | `Europe/Warsaw` | часовой пояс для тихих часов и рассылки |
 | `ALBUM_EVERY` | `8` | примерно каждый N-й автопост — альбом, `0` — без альбомов |

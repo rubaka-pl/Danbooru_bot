@@ -57,11 +57,12 @@ Blueprint сам включает **Health Check** на `/health`: если бо
   BOT_TOKEN=... WEBHOOK_URL=https://<проект>.vercel.app/api/webhook WEBHOOK_SECRET=... npm run webhook:set
   ```
   В конце должно напечататься `✅ Webhook установлен`.
-- [ ] На [cron-job.org](https://cron-job.org) (бесплатно) создай **две** задачи:
+- [ ] На [cron-job.org](https://cron-job.org) (бесплатно) создай задачи:
 
   | Что | URL | Как часто |
   |---|---|---|
   | Автопост в канал | `https://<проект>.vercel.app/api/autopost?secret=<CRON_SECRET>` | каждые 5–10 минут |
+  | Автопост 18+ | `https://<проект>.vercel.app/api/autopost?secret=<CRON_SECRET>&channel=18` | каждые 5–10 минут |
   | Подписки + «Топ недели» | `https://<проект>.vercel.app/api/digest?secret=<CRON_SECRET>` | каждый час |
 
   Встроенный cron Vercel на бесплатном тарифе запускается только раз в день, поэтому нужен внешний.
@@ -123,6 +124,8 @@ Blueprint сам включает **Health Check** на `/health`: если бо
 | `WEBHOOK_SECRET` | только Vercel | — | защита webhook |
 | `CRON_SECRET` | только Vercel | — | защита `/api/autopost` и `/api/digest` |
 | `AUTOPOST` | нет | `on` | `off` — выключить автопост |
+| `ADULT_GROUP_ID` | нет | `@obitel_dionisa_18` | второй канал/группа — автопост только 18+; пусто — выкл. |
+| `ADULT_AUTOPOST` | нет | `on` | `off` — выключить автопост 18+ |
 | `AUTOPOST_INTERVAL` | нет | `60` | секунд между автопостами (Render) |
 | `BATTLE_EVERY` | нет | `25` | ≈ каждый N-й автопост — «⚔️ Битва артов» с опросом; `0` — выкл. |
 | `USER_HOURLY_LIMIT` | нет | `200` | картинок в час на пользователя (защита от спама), `0` — без лимита |
@@ -149,6 +152,7 @@ Blueprint сам включает **Health Check** на `/health`: если бо
 | В логах `409 Conflict` | С этим же токеном запущена ещё одна копия бота (старый сервер, компьютер, второй сервис). Останови лишнюю. |
 | Бот перестаёт работать через ~15 минут | Хостинг усыпил сервис. Проверь, что в логах есть `🔁 Не даю хостингу уснуть…`, и добавь задачу на cron-job.org. |
 | Бот молчит | `/health` на хостинге. Логи хостинга. На Vercel — что webhook установлен (`npm run webhook:set`) и `WEBHOOK_SECRET` совпадает. На Render — что webhook **удалён** (`npm run webhook:delete`). |
+| Нет постов в 18+ | Бот — админ в @obitel_dionisa_18 с правом публикации? На Vercel — есть ли отдельная задача cron с `&channel=18`? |
 | Нет автопостов | Бот — админ канала? `GROUP_ID` правильный? Не тихие часы? Не на паузе (`/admin`)? На Vercel — работает ли задача cron-job.org (в ней видно ответ). |
 | Inline не работает | `/setinline` в @BotFather. |
 | `/stats` пустой, «Топ недели» не выходит | Реакции в канале включены? Бот — админ? Статистика копится с момента, когда бот начал постить с этой версией. |

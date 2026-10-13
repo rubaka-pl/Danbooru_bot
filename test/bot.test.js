@@ -476,6 +476,15 @@ test('реакции в канале → статистика → /stats', async
     assert.equal(top.tag, 'rem_(re:zero)');
     assert.equal(top.reactions, 7);
 
+    // Реакции из 18+ канала не учитываются
+    await t.update({
+        message_reaction_count: {
+            chat: { id: -1002, type: 'channel', title: 'a', username: 'Test_Adult' }, message_id: 1, date: 0,
+            reactions: [{ type: { type: 'emoji', emoji: '👍' }, total_count: 50 }]
+        }
+    });
+    assert.equal((await t.channelStats.top(1))[0].reactions, 7);
+
     await t.text('/stats');
     assert.match(lastText(), /Rem \(Re:zero\) — 3\.5 · 2/);
 });

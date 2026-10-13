@@ -29,16 +29,20 @@ test('launchPolling: обычный запуск', async () => {
     assert.match(warnings[0], /webhook/);
 });
 
-test('launchPolling: 409 — ждёт, уведомляет админа и пробует снова', async () => {
+test('launchPolling: 409 — ждёт и пробует снова; админу — только если конфликт держится', async () => {
     const notes = [];
     const errors = [];
-    const bot = fakeBot([tgError(409), tgError(409), undefined]);
+    const deploy = fakeBot([tgError(409), tgError(409), undefined]);
+    await launchPolling(deploy, { retryMs: 1, alerts: { notify: async (key) => notes.push(key) }, log: silent });
+    assert.deepEqual(notes, []); // обычный деплой — без тревоги
+
+    const bot = fakeBot([tgError(409), tgError(409), tgError(409), undefined]);
     await launchPolling(bot, {
         retryMs: 1,
         alerts: { notify: async (key, text) => notes.push([key, text]) },
         log: { ...silent, error: (m) => errors.push(m) }
     });
-    assert.equal(bot.launches.length, 3);
+    assert.equal(bot.launches.length, 4);
     assert.equal(bot.launches[1].dropPendingUpdates, false);
     assert.match(errors[0], /другая копия бота/);
     assert.equal(notes[0][0], 'conflict');

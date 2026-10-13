@@ -112,6 +112,9 @@ export const config = {
     // Самопинг, чтобы бесплатный Render не усыплял сервис (KEEP_ALIVE=off — выключить)
     keepAliveUrl: (env.KEEP_ALIVE || 'on').toLowerCase() === 'off' ? '' : (env.KEEP_ALIVE_URL || env.RENDER_EXTERNAL_URL || ''),
 
+    // При запуске убирать чужую рекламу из описания/имени бота на всех языках (CLEAN_PROFILE=off — выкл.)
+    cleanProfile: (env.CLEAN_PROFILE || 'on').toLowerCase() !== 'off',
+
     // Писать в лог строку на каждое входящее сообщение (LOG_UPDATES=off — выключить)
     logUpdates: (env.LOG_UPDATES || 'on').toLowerCase() !== 'off',
 

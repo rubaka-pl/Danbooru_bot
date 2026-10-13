@@ -6,6 +6,7 @@ import { COMMANDS } from './bot/handlers/start.js';
 import { createHttpServer } from './server.js';
 import { launchPolling } from './bot/launch.js';
 import { startKeepAlive } from './services/keepAlive.js';
+import { cleanBotProfile } from './services/botProfile.js';
 
 const app = createApp();
 const { bot, config, history, store } = app;
@@ -55,6 +56,9 @@ launchPolling(bot, {
     onLaunch: () => {
         console.log(`🟢 Бот @${bot.botInfo?.username} запущен и ждёт сообщений`);
         bot.telegram.setMyCommands(COMMANDS).catch(error => console.warn('⚠️ setMyCommands:', error.message));
+        if (config.cleanProfile) {
+            cleanBotProfile(bot.telegram).catch(error => console.warn('⚠️ Проверка профиля бота:', error.message));
+        }
     }
 }).catch(error => {
     console.error('❌ Не удалось запустить бота:', error);
